@@ -3,7 +3,7 @@
 # ICON: nxt_tube
 # GRID: NXT Tube
 
-# NXT Retro Tube 2.0 — by Nguyễn Xuân Thông — muOS (TrimUI Brick / Brick Pro)
+# NXT Retro Tube 2.0.1 — by Nguyễn Xuân Thông — muOS (TrimUI Brick / Brick Pro)
 DIR="${1:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}"
 cd "$DIR" || exit 1
 BIN="$DIR/bin/tg5040/nxt-retro-tube.elf"

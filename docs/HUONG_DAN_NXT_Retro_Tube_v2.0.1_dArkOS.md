@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.0 — dArkOS (R36S và máy RK3326 cùng kiểu)
+# NXT Retro Tube 2.0.1 — dArkOS (R36S và máy RK3326 cùng kiểu)
 
 ## Yêu cầu
 - dArkOS trên R36S (và máy cùng bo mạch RG351MP / RK3326, tay cầm "GO-Super Gamepad"). Cần Wi-Fi (USB Wi-Fi trên R36S).
@@ -15,6 +15,9 @@ Nếu bạn để game ở thẻ thứ hai (`/roms2`) thì chép vào `ports` c�
 **Start → Game settings → Update gamelists** (hoặc khởi động lại). App nằm trong **Ports**.
 
 Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm trong `ports/nxt-retro-tube/data`.
+
+## Mới ở 2.0.1
+- Sửa lỗi Cập nhật (OTA) báo "không kiểm tra được, cần Wi-Fi": thư viện bảo mật của app chưa hỗ trợ kiểu chữ ký RSA-PSS mà máy chủ tải tệp của GitHub dùng (TLS 1.3). Cũng sửa luôn việc tải gói chữ phụ đề Hàn / Nhật / Trung / Thái.
 
 ## Mới ở 2.0
 - **Cập nhật OTA ngay trên máy:** Cài đặt → **Cập nhật (OTA)** → A. App tự nhận ra ROM và máy đang dùng để tải đúng bản; chỉ tải phần nào có bản mới.

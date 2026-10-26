@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define APP_NAME "NXT Retro Tube"
-#define APP_VERSION "2.0"
+#define APP_VERSION "2.0.1"
 #define APP_AUTHOR "Nguyễn Xuân Thông"
 #define DONATE_MOMO "0339838267"
 #define DONATE_BANK "VCB 0581000786219"

@@ -1,15 +1,27 @@
-# NXT Retro Tube 2.0 — NX Redux (TrimUI Brick Pro)
+# NXT Retro Tube 2.0.1 — firmware gốc TrimUI (Stock) — TrimUI Smart Pro S
 
 ## Cài đặt
-Chép thư mục `Tools/NXT Retro Tube.pak` vào `Tools/` trên thẻ nhớ (chép đè nếu đã có bản cũ). Mở từ Tools.
+Chép thư mục `Apps/NXT_Retro_Tube` vào `Apps/` trên thẻ nhớ (firmware gốc Smart Pro S 1.0.1 trở lên). Mở từ mục Apps (icon NXT Retro Tube).
 
-Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/shared/nxt-retro-tube`.
+**Bản đầu tiên cho Smart Pro S (chip A523, màn 1280×720):** giao diện giữ khung 4:3 ở giữa màn hình (hai bên viền đen),
+còn **video toàn màn hình dùng hết màn 16:9 ở độ phân giải gốc**. Trên Smart Pro S app **không** tạm dừng keymon của hệ thống:
+- Âm lượng, nút nguồn (ngủ máy) và nút Home (Task Manager) do hệ thống xử lý như mọi app.
+- Nút **MENU** mở **Bảng nhanh** của app (Tiếp tục · Tắt màn hình vẫn nghe · Nghe nền · Thoát).
+- Độ sáng giữ đúng mức hệ thống; "Tắt màn hình · vẫn nghe" trả lại đúng độ sáng cũ khi bật lại.
+
+Mình chưa có máy Smart Pro S để thử trực tiếp: nếu gặp lỗi (màn hình xoay sai, phím không đúng, không có tiếng…), gửi tệp
+`.userdata/nxt-tube-stock/shared/nxt-retro-tube/cache/nxt-retro-tube-run.txt` cho tác giả để sửa ở bản sau (qua OTA).
+
+Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/nxt-tube-stock/shared/nxt-retro-tube`.
+
+## Mới ở 2.0.1
+- Sửa lỗi Cập nhật (OTA) báo "không kiểm tra được, cần Wi-Fi": thư viện bảo mật của app chưa hỗ trợ kiểu chữ ký RSA-PSS mà máy chủ tải tệp của GitHub dùng (TLS 1.3). Cũng sửa luôn việc tải gói chữ phụ đề Hàn / Nhật / Trung / Thái.
 
 ## Mới ở 2.0
 - **Cập nhật OTA ngay trên máy:** Cài đặt → **Cập nhật (OTA)** → A. App tự nhận ra ROM và máy đang dùng để tải đúng bản; chỉ tải phần nào có bản mới.
 - **Video thiếu nhi (made for kids) nhanh hơn nhiều:** bộ giải mã JavaScript chạy thường trú và nhớ trình phát của YouTube, nên chỉ video đầu tiên sau khi YouTube đổi trình phát còn chậm; các video sau mở gần nhanh như video thường. App nhớ cách lấy luồng nào chạy được để thử trước và lấy sẵn video kế tiếp.
 - Nút Home bên hông: một lần bấm chỉ tính một lần (không còn mở rồi tắt ngay). Khi bảng Task Manager / OSD của hệ thống đang mở, app không nhận phím nữa.
-
+- **Hỗ trợ TrimUI Smart Pro S** (firmware gốc) — bản đầu tiên.
 ## Tính năng
 - Giao diện kiểu app YouTube trên điện thoại, phong cách retro; tiếng Việt / English.
 - Trang chủ "Dành cho bạn" theo lịch sử tìm kiếm và kênh đã xem; các mục Âm nhạc, Game retro, Chill & Lofi, Hoạt hình, Trực tiếp, Mới tải lên; danh sách không giới hạn.
@@ -24,32 +36,19 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm �
 - Video 60 khung/giây luôn khớp tiếng (hiện tối đa ~30 hình/giây trên máy).
 - Hàng "Tiếp theo" cuộn được, tự tải thêm video gợi ý; tự phát video kế.
 - Nút âm lượng cho loa, tai nghe 3.5 mm và DAC USB, có hiện mức âm lượng.
-- Nút nguồn: tắt đen màn hình, vẫn nghe (như YouTube Premium). Bấm nút bất kỳ (trừ âm lượng) để bật lại.
-- Nút Home bên hông: Bảng nhanh (Tiếp tục · Tắt màn hình · Nghe nền · Thoát). Nút logo TrimUI: thoát ngay.
+- Bảng nhanh (MENU) → "Tắt màn hình · vẫn nghe": tắt đen màn hình, vẫn nghe (như YouTube Premium). Bấm nút bất kỳ để bật lại.
+- Nút MENU: Bảng nhanh (Tiếp tục · Tắt màn hình · Nghe nền · Thoát). Nút Home: Task Manager của hệ thống.
 - Nghe nền (về menu máy, tiếng vẫn phát), Xem sau, Theo dõi kênh, Tải về máy (720p) xem không cần mạng.
-- USB DAC ở cả hai cổng USB-C (cổng sạc: bật trong Cài đặt).
 - Cài đặt: ngôn ngữ, chất lượng mặc định, tự phát tiếp, lấy luồng trước, Telex, bù trễ tiếng–hình, đầu ra âm thanh, cổng sạc cho DAC, kiểu trang chủ, đổi phím, xóa bộ nhớ đệm / lịch sử / lượt tìm, phiên bản, tác giả · ủng hộ, phụ đề (chế độ, ngôn ngữ, cỡ chữ), chế độ trẻ em.
 
 ## Phím
 | Màn hình | Phím |
 |---|---|
-| Mọi nơi | Logo TrimUI: thoát · Home bên hông: Bảng nhanh · Nguồn: tắt/bật màn hình · Âm lượng ± |
+| Mọi nơi | MENU: Bảng nhanh · Home: Task Manager của hệ thống · Nguồn / Âm lượng: do hệ thống |
 | Trang chủ / Thư viện | D-pad chọn · A xem · Y tìm kiếm · X Xem sau · L1/R1 đổi mục con · L2/R2 đổi mục chính · START làm mới · SELECT mở lại video đang phát · B thoát (đang phát thì hỏi Nghe nền / Thoát) |
 | Xem video | A phát/dừng · Trái/Phải tua 10 giây · L2/R2 tua 60 giây · L1/R1 video trước/sau · X chất lượng · START tốc độ · SELECT tùy chọn · Y toàn màn hình · Xuống: hàng Tiếp theo · B về |
 | Hàng Tiếp theo | Trái/Phải chọn (không tua) · L2/R2 nhảy 4 video · A xem · Lên quay lại |
 | Tìm kiếm | A gõ · B xóa chữ / về · Y dấu cách · X xóa hết · SELECT Telex · START tìm · L1/R1 lượt tìm gần đây · L2/R2 đổi mục chính |
-
-## Icon trong menu Tools
-Launcher NX Redux gán icon cho Tools bằng danh sách cố định trong mã, nên app kèm launcher dựng lại từ đúng mã nguồn NX Redux,
-chỉ thêm hai dòng: "NXT Retro Tube" và "NXT Retro Music" (icon của cả hai app):
-- **NX Redux 2.4.1** (bản mới, kho `nx-redux/nx-handheld`, tag v2.4.1): nhận diện qua `.system/version.txt` = v2.4.1.
-- NX Redux 2.1.2 (bản cũ): nhận diện bằng mã SHA-256 của launcher gốc / launcher NXT Retro Music.
-
-App chỉ thay launcher khi đúng một trong hai phiên bản trên, sao lưu launcher cũ vào `integration/backup/`, và cài luôn
-`menu_icon_nxt_tube.png` (cùng `menu_icon_nxt.png` của NXT Retro Music nếu máy chưa có).
-Gỡ: Cài đặt → "Icon trong menu Tools" → bấm A hai lần. Sau lần mở app đầu tiên, khởi động lại máy để thấy icon.
-Khi NX Redux cập nhật lên bản mới hơn 2.4.1, launcher mới của NX Redux sẽ thay launcher này (icon mất, app vẫn chạy bình thường)
-cho tới khi có bản NXT Retro Tube hỗ trợ phiên bản đó.
 
 ## Chế độ trẻ em (phụ huynh quản lý)
 Vào **Cài đặt → Chế độ trẻ em**. Lần đầu bật sẽ yêu cầu đặt **mã PIN phụ huynh 4 số** (nhập 2 lần).
@@ -86,7 +85,7 @@ Xem video nói tiếng nước ngoài, app tự hiện **phụ đề dịch sang
 - **Ngôn ngữ phụ đề:** "Theo app" (Tiếng Việt hoặc English theo ngôn ngữ giao diện), hoặc chọn: Tiếng Việt, English, Español,
   Français, Deutsch, Português, Italiano, Bahasa Indonesia (có sẵn), **Tiếng Hàn, Tiếng Nhật, Tiếng Trung, Tiếng Thái** (cần tải gói chữ).
 - **Tải gói chữ:** chọn ngôn ngữ đó rồi bấm **A** (một lần; Hàn ~10 MB, Nhật ~9 MB, Trung ~17 MB, Thái <1 MB). Phần ghi chú hiện % đang tải.
-  Gói chữ (font Noto Sans của Google, giấy phép SIL OFL) được kiểm tra mã SHA-256 rồi lưu vào `.userdata/shared/nxt-retro-tube/fonts`. Xóa thư mục đó để gỡ.
+  Gói chữ (font Noto Sans của Google, giấy phép SIL OFL) được kiểm tra mã SHA-256 rồi lưu vào `.userdata/nxt-tube-stock/shared/nxt-retro-tube/fonts`. Xóa thư mục đó để gỡ.
 - **Cỡ chữ phụ đề:** Nhỏ / Vừa / Lớn.
 
 **Đổi riêng cho video đang xem:** SELECT (Tùy chọn video) → **Phụ đề**, bấm A để đổi: Theo cài đặt → Bật · dịch (sang ngôn ngữ của bạn)
@@ -123,6 +122,6 @@ NXT Retro Tube do **Nguyễn Xuân Thông** làm. Nếu thấy app hữu ích, b
 Trong app: Cài đặt → **Tác giả · Ủng hộ**.
 
 ## Khi có lỗi
-Gửi lại `NXT_Tube_Log.txt` (trong thư mục app) và `.userdata/shared/nxt-retro-tube/cache/ytdlp-helper-0.txt`.
+Gửi lại `NXT_Tube_Log.txt` (trong thư mục app) và `.userdata/nxt-tube-stock/shared/nxt-retro-tube/cache/ytdlp-helper-0.txt`.
 
 Ứng dụng không liên kết với YouTube/Google. Giấy phép: thư mục `licenses`.

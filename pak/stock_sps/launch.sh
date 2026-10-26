@@ -1,5 +1,5 @@
 #!/bin/sh
-# NXT Retro Tube 2.0 — by Nguyễn Xuân Thông — official TrimUI firmware (Stock), TrimUI Smart Pro S (TG5050)
+# NXT Retro Tube 2.0.1 — by Nguyễn Xuân Thông — official TrimUI firmware (Stock), TrimUI Smart Pro S (TG5050)
 DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)" || exit 1
 cd "$DIR" || exit 1
 STOCK_DATA="/mnt/SDCARD/.userdata/nxt-tube-stock"

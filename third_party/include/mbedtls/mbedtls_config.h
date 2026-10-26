@@ -41,6 +41,8 @@
 #define MBEDTLS_PK_RSA_ALT_SUPPORT
 #define MBEDTLS_PKCS1_V15
 #define MBEDTLS_PKCS1_V21
+/* RSA-PSS signatures: TLS 1.3 servers with RSA certificates (GitHub release downloads) need them */
+#define MBEDTLS_X509_RSASSA_PSS_SUPPORT
 #define MBEDTLS_SSL_ALL_ALERT_MESSAGES
 #define MBEDTLS_SSL_ENCRYPT_THEN_MAC
 #define MBEDTLS_SSL_EXTENDED_MASTER_SECRET

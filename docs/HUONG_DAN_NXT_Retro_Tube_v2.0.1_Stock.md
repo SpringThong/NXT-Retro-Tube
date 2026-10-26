@@ -1,24 +1,20 @@
-# NXT Retro Tube 2.0 — firmware gốc TrimUI (Stock) — TrimUI Smart Pro S
+# NXT Retro Tube 2.0.1 — firmware gốc TrimUI (Stock) — TrimUI Brick / Brick Pro
 
 ## Cài đặt
-Chép thư mục `Apps/NXT_Retro_Tube` vào `Apps/` trên thẻ nhớ (firmware gốc Smart Pro S 1.0.1 trở lên). Mở từ mục Apps (icon NXT Retro Tube).
+Chép thư mục `Apps/NXT_Retro_Tube` vào `Apps/` trên thẻ nhớ. Mở từ mục Apps (icon NXT Retro Tube).
 
-**Bản đầu tiên cho Smart Pro S (chip A523, màn 1280×720):** giao diện giữ khung 4:3 ở giữa màn hình (hai bên viền đen),
-còn **video toàn màn hình dùng hết màn 16:9 ở độ phân giải gốc**. Trên Smart Pro S app **không** tạm dừng keymon của hệ thống:
-- Âm lượng, nút nguồn (ngủ máy) và nút Home (Task Manager) do hệ thống xử lý như mọi app.
-- Nút **MENU** mở **Bảng nhanh** của app (Tiếp tục · Tắt màn hình vẫn nghe · Nghe nền · Thoát).
-- Độ sáng giữ đúng mức hệ thống; "Tắt màn hình · vẫn nghe" trả lại đúng độ sáng cũ khi bật lại.
-
-Mình chưa có máy Smart Pro S để thử trực tiếp: nếu gặp lỗi (màn hình xoay sai, phím không đúng, không có tiếng…), gửi tệp
-`.userdata/nxt-tube-stock/shared/nxt-retro-tube/cache/nxt-retro-tube-run.txt` cho tác giả để sửa ở bản sau (qua OTA).
+Trong lúc app hiện trên màn hình, app tạm dừng keymon của firmware (giống NXT Retro Music) để tự xử lý nút nguồn, âm lượng và Home; khi về menu hoặc thoát, keymon chạy lại bình thường. Nút Home bên hông mở bảng nhanh (Task Manager) của firmware nếu có.
 
 Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/nxt-tube-stock/shared/nxt-retro-tube`.
+
+## Mới ở 2.0.1
+- Sửa lỗi Cập nhật (OTA) báo "không kiểm tra được, cần Wi-Fi": thư viện bảo mật của app chưa hỗ trợ kiểu chữ ký RSA-PSS mà máy chủ tải tệp của GitHub dùng (TLS 1.3). Cũng sửa luôn việc tải gói chữ phụ đề Hàn / Nhật / Trung / Thái.
 
 ## Mới ở 2.0
 - **Cập nhật OTA ngay trên máy:** Cài đặt → **Cập nhật (OTA)** → A. App tự nhận ra ROM và máy đang dùng để tải đúng bản; chỉ tải phần nào có bản mới.
 - **Video thiếu nhi (made for kids) nhanh hơn nhiều:** bộ giải mã JavaScript chạy thường trú và nhớ trình phát của YouTube, nên chỉ video đầu tiên sau khi YouTube đổi trình phát còn chậm; các video sau mở gần nhanh như video thường. App nhớ cách lấy luồng nào chạy được để thử trước và lấy sẵn video kế tiếp.
 - Nút Home bên hông: một lần bấm chỉ tính một lần (không còn mở rồi tắt ngay). Khi bảng Task Manager / OSD của hệ thống đang mở, app không nhận phím nữa.
-- **Hỗ trợ TrimUI Smart Pro S** (firmware gốc) — bản đầu tiên.
+- Stock: độ sáng trong app giữ đúng mức bạn chỉnh ở hệ thống (trước đây bị tối hơn).
 ## Tính năng
 - Giao diện kiểu app YouTube trên điện thoại, phong cách retro; tiếng Việt / English.
 - Trang chủ "Dành cho bạn" theo lịch sử tìm kiếm và kênh đã xem; các mục Âm nhạc, Game retro, Chill & Lofi, Hoạt hình, Trực tiếp, Mới tải lên; danh sách không giới hạn.
@@ -33,15 +29,16 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm �
 - Video 60 khung/giây luôn khớp tiếng (hiện tối đa ~30 hình/giây trên máy).
 - Hàng "Tiếp theo" cuộn được, tự tải thêm video gợi ý; tự phát video kế.
 - Nút âm lượng cho loa, tai nghe 3.5 mm và DAC USB, có hiện mức âm lượng.
-- Bảng nhanh (MENU) → "Tắt màn hình · vẫn nghe": tắt đen màn hình, vẫn nghe (như YouTube Premium). Bấm nút bất kỳ để bật lại.
-- Nút MENU: Bảng nhanh (Tiếp tục · Tắt màn hình · Nghe nền · Thoát). Nút Home: Task Manager của hệ thống.
+- Nút nguồn: tắt đen màn hình, vẫn nghe (như YouTube Premium). Bấm nút bất kỳ (trừ âm lượng) để bật lại.
+- Nút Home bên hông: Bảng nhanh (Tiếp tục · Tắt màn hình · Nghe nền · Thoát). Nút logo TrimUI: thoát ngay.
 - Nghe nền (về menu máy, tiếng vẫn phát), Xem sau, Theo dõi kênh, Tải về máy (720p) xem không cần mạng.
+- USB DAC ở cả hai cổng USB-C (cổng sạc: bật trong Cài đặt).
 - Cài đặt: ngôn ngữ, chất lượng mặc định, tự phát tiếp, lấy luồng trước, Telex, bù trễ tiếng–hình, đầu ra âm thanh, cổng sạc cho DAC, kiểu trang chủ, đổi phím, xóa bộ nhớ đệm / lịch sử / lượt tìm, phiên bản, tác giả · ủng hộ, phụ đề (chế độ, ngôn ngữ, cỡ chữ), chế độ trẻ em.
 
 ## Phím
 | Màn hình | Phím |
 |---|---|
-| Mọi nơi | MENU: Bảng nhanh · Home: Task Manager của hệ thống · Nguồn / Âm lượng: do hệ thống |
+| Mọi nơi | Logo TrimUI: thoát · Home bên hông: Bảng nhanh · Nguồn: tắt/bật màn hình · Âm lượng ± |
 | Trang chủ / Thư viện | D-pad chọn · A xem · Y tìm kiếm · X Xem sau · L1/R1 đổi mục con · L2/R2 đổi mục chính · START làm mới · SELECT mở lại video đang phát · B thoát (đang phát thì hỏi Nghe nền / Thoát) |
 | Xem video | A phát/dừng · Trái/Phải tua 10 giây · L2/R2 tua 60 giây · L1/R1 video trước/sau · X chất lượng · START tốc độ · SELECT tùy chọn · Y toàn màn hình · Xuống: hàng Tiếp theo · B về |
 | Hàng Tiếp theo | Trái/Phải chọn (không tua) · L2/R2 nhảy 4 video · A xem · Lên quay lại |

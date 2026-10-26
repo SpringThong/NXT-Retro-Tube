@@ -342,7 +342,7 @@ static const char *const PAIRS[][2] = {
     {"Nhật", "Japanese"},
     {"Trung", "Chinese"},
     {"Thái", "Thai"},
-    {"Không kiểm tra được (cần Wi-Fi)", "Couldn't check (needs Wi-Fi)"},
+    {"Không kết nối được máy chủ cập nhật · kiểm tra Wi-Fi", "Couldn't reach the update server · check Wi-Fi"},
     {"Bản cập nhật không có chữ ký hợp lệ · bỏ qua", "Update has no valid signature · ignored"},
     {"Tệp cập nhật lỗi", "Update file is broken"},
     {"Có bản %s · %.1f MB", "Version %s available · %.1f MB"},

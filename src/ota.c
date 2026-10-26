@@ -196,7 +196,7 @@ static void *check_thread(void *arg) {
     snprintf(url, sizeof(url), "%s/ota.json.sig", base);
     char *sig = man ? fetch_small(url, 512, &slen) : NULL;
     {   char p[1300]; state_file(p, sizeof(p)); FILE *f = fopen(p, "w"); if (f) { fprintf(f, "%lld\n", (long long)time(NULL)); fclose(f); } }
-    if (!man || !sig) { set_state(OTA_ERROR, "%s", T("Không kiểm tra được (cần Wi-Fi)")); goto out; }
+    if (!man || !sig) { set_state(OTA_ERROR, "%s", T("Không kết nối được máy chủ cập nhật · kiểm tra Wi-Fi")); goto out; }
     if (!sig_ok(man, mlen, (unsigned char *)sig, slen)) { set_state(OTA_ERROR, "%s", T("Bản cập nhật không có chữ ký hợp lệ · bỏ qua")); goto out; }
     JSON_Value *root = json_parse_string(man);
     JSON_Object *o = json_value_get_object(root), *cs = json_object_get_object(o, "components");
