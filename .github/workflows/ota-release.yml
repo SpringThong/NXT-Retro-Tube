@@ -23,10 +23,14 @@ jobs:
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           mkdir -p assets
+          if [ "${{ github.event_name }}" = release ] && gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qx 'ota.json.sig'; then
+            echo "Release already carries a signed ota.json: nothing to do"; echo "SKIP=1" >> "$GITHUB_ENV"; exit 0
+          fi
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'ota-*.zip' --dir assets
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.txt
           ls -l assets
       - name: Write and sign ota.json
+        if: env.SKIP != '1'
         env:
           OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
@@ -34,6 +38,7 @@ jobs:
           test -n "$OTA_SIGNING_KEY" || { echo "::error::Secret OTA_SIGNING_KEY is missing (Settings > Secrets and variables > Actions)"; exit 1; }
           python3 tools/ota/make_manifest.py --repo "$GITHUB_REPOSITORY" --tag "$TAG" --assets assets --notes notes.txt
       - name: Attach to the release
+        if: env.SKIP != '1'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
