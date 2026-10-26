@@ -1,0 +1,18 @@
+{
+  "package": "vn.nguyenxuanthong.nxtretrotube",
+  "label": "NXT Retro Tube",
+  "icontop": "icon.png",
+  "icon": "",
+  "launch": "launch.sh",
+  "description": "Xem YouTube: giao diện retro, HD 720p/60, tiếng–hình đồng bộ, nghe nền, tắt màn hình vẫn nghe.",
+  "release_filename": "NXT_Retro_Tube_v2.0_Stock_SmartProS.zip",
+  "version": "2.0",
+  "rom": "stock",
+  "device": "trimui-smart-pro-s",
+  "author": "Nguyễn Xuân Thông",
+  "donate": {
+    "momo": "0339838267",
+    "bank": "VCB 0581000786219",
+    "paypal": "thongkhung2@gmail.com"
+  }
+}

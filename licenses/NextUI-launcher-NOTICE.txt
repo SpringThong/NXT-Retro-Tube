@@ -1,0 +1,17 @@
+NX Redux launchers in integration/ (NextUI fork, GPL-3.0):
+
+integration/nextui-v2.4.1-nxt-icons.elf
+  NX Redux 2.4.1 launcher, built from https://github.com/nx-redux/nx-handheld tag v2.4.1
+  (commit 60c1856a) with launcher/nxredux-2.4.1-tiles-nxt-icons.patch: two added lines in
+  workspace/all/nextui/tiles.c, Tiles_toolIcon():
+      {"NXT Retro Music", "menu_icon_nxt.png"},
+      {"NXT Retro Tube", "menu_icon_nxt_tube.png"},
+  Installed only when .system/version.txt says v2.4.1 and the current file is an NX Redux launcher.
+
+integration/nextui-v2.1.2-nxt-tube-icon.elf
+  NX Redux 2.1.2 launcher built from the launcher source shipped with NXT Retro Music
+  (nxredux/launcher-source) with launcher/nxredux-tiles-nxt-tube-icon.patch. Installed only when the
+  current launcher is the official 2.1.2 build or the NXT Retro Music icon build (SHA-256).
+
+The previous launcher is kept in integration/backup/ and can be put back from
+Settings > Tools-menu icon.

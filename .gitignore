@@ -1,0 +1,7 @@
+build/
+dist/
+runtime/
+sdk/
+deps/ffmpeg-*/
+__pycache__/
+ota_private*.pem

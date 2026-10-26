@@ -1,0 +1,11 @@
+--- workspace/all/nextui/tiles.c.orig
++++ workspace/all/nextui/tiles.c
+@@ -1007,6 +1007,8 @@
+ 		{"Xtras", "menu_icon_xtras.png"},
+ 		{"PortMaster", "menu_icon_portmaster.png"},
+ 		{"Cheat Database", "menu_icon_cheats.png"},
++		{"NXT Retro Music", "menu_icon_nxt.png"},
++		{"NXT Retro Tube", "menu_icon_nxt_tube.png"},
+ 	};
+ 	if (!pak_name)
+ 		return NULL;

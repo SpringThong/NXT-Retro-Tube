@@ -1,0 +1,14 @@
+{
+  "name": "NXT Retro Tube",
+  "version": "2.0",
+  "package": "vn.nguyenxuanthong.nxtretrotube",
+  "rom": "nxredux",
+  "device": "trimui-brick-pro",
+  "launch": "launch.sh",
+  "author": "Nguyễn Xuân Thông",
+  "donate": {
+    "momo": "0339838267",
+    "bank": "VCB 0581000786219",
+    "paypal": "thongkhung2@gmail.com"
+  }
+}

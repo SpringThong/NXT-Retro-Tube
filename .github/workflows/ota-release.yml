@@ -1,0 +1,40 @@
+# When a release is published (or on demand), build the signed OTA manifest:
+# reads the release's ota-*.zip files, writes ota.json + ota.json.sig and attaches them.
+# Needs the repository secret OTA_SIGNING_KEY (the PEM private key, see docs/OTA_HUONG_DAN.md).
+name: OTA manifest
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v2.1)'
+        required: true
+permissions:
+  contents: write
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the OTA packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          mkdir -p assets
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'ota-*.zip' --dir assets
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.txt
+          ls -l assets
+      - name: Write and sign ota.json
+        env:
+          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          test -n "$OTA_SIGNING_KEY" || { echo "::error::Secret OTA_SIGNING_KEY is missing (Settings > Secrets and variables > Actions)"; exit 1; }
+          python3 tools/ota/make_manifest.py --repo "$GITHUB_REPOSITORY" --tag "$TAG" --assets assets --notes notes.txt
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: gh release upload "$TAG" assets/ota.json assets/ota.json.sig --repo "$GITHUB_REPOSITORY" --clobber

@@ -1,0 +1,10 @@
+--- a/workspace/all/nextui/tiles.c	2026-10-20 08:44:50.000000000 +0700
++++ b/workspace/all/nextui/tiles.c	2026-10-25 13:56:24.436620596 +0700
+@@ -1008,6 +1008,7 @@
+ 		{"PortMaster", "menu_icon_portmaster.png"},
+ 		{"Cheat Database", "menu_icon_cheats.png"},
+         {"NXT Retro Music", "menu_icon_nxt.png"},
++        {"NXT Retro Tube", "menu_icon_nxt_tube.png"},
+ 	};
+ 	if (!pak_name)
+ 		return NULL;

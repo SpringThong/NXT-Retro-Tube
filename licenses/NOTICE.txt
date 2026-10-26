@@ -1,0 +1,22 @@
+NXT Retro Tube 1.4 — third-party components
+
+NXT Retro Tube (c) Nguyễn Xuân Thông — GPL-3.0-only (NXT-Retro-Tube-GPL-3.0.txt).
+Donate: MoMo 0339838267 · VCB 0581000786219 · PayPal thongkhung2@gmail.com
+Not affiliated with, endorsed by or sponsored by YouTube or Google.
+
+FFmpeg 6.1.6 (libavformat, libavcodec, libavutil, libswscale, libswresample),
+  built with --enable-version3 and linked statically: LGPL-3.0 (FFmpeg-LGPL-3.0.txt).
+  Source: https://ffmpeg.org/releases/ffmpeg-6.1.6.tar.xz ; configure options in SOURCE.txt.
+Mbed TLS 3.6: Apache-2.0 (Apache-2.0.txt). https://github.com/Mbed-TLS/mbedtls
+Sonic (time-stretch): Apache-2.0 (Apache-2.0.txt). https://github.com/waywardgeek/sonic
+parson (JSON): MIT, Copyright (c) Krzysztof Gabis.
+yt-dlp 2026.10.21 + Python runtime (PyInstaller): The Unlicense (yt-dlp-Unlicense.txt);
+  bundled Python and modules keep their own licenses inside bin/yt-dlp-runtime/_internal.
+Deno 2.9.8: MIT, Copyright 2018-2026 the Deno authors. https://github.com/denoland/deno
+SDL2_ttf (zlib), HarfBuzz (MIT-style), FreeType (FTL), FriBidi (LGPL-2.1), utf8proc (MIT).
+SDL2 and SDL2_image are provided by the device firmware (zlib).
+libstdc++ (GPL-3.0 with GCC Runtime Library Exception).
+Be Vietnam Pro and VT323 fonts: SIL Open Font License 1.1.
+Optional subtitle font packs (Noto Sans KR / JP / SC / Thai, Google), downloaded by the user from github.com/google/fonts: SIL Open Font License 1.1.
+Icons: Lucide (ISC).
+Mozilla CA bundle (MPL-2.0), minus one certificate Mbed TLS cannot parse.

@@ -1,0 +1,17 @@
+{
+  "name": "NXT Retro Tube",
+  "version": "2.0",
+  "type": "TOOL",
+  "description": "Xem YouTube trên TrimUI Brick Pro: giao diện retro kiểu app điện thoại, HD 720p (1080p thử nghiệm), tiếng–hình đồng bộ, nghe nền, xem sau, theo dõi kênh, tải về máy.",
+  "author": "Nguyễn Xuân Thông",
+  "release_filename": "NXT_Retro_Tube_v2.0_NXRedux.zip",
+  "platforms": [
+    "tg5040"
+  ],
+  "rom": "nxredux",
+  "donate": {
+    "momo": "0339838267",
+    "bank": "VCB 0581000786219",
+    "paypal": "thongkhung2@gmail.com"
+  }
+}
