@@ -60,7 +60,11 @@ static const char *QUALITY_NOTE[] = {"HD 720p · 60 khung/giây nếu video có"
 static const float SPEEDS[] = {0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f};
 static const char *SPEED_LABEL[] = {"0,5×", "0,75×", "1×", "1,25×", "1,5×", "2×"};
 #define NS 6
-static const char *KEYS[40] = {"1","2","3","4","5","6","7","8","9","0","q","w","e","r","t","y","u","i","o","p","a","s","d","f","g","h","j","k","l","del","z","x","c","v","b","n","m",".","space","go"};
+static const char *KEYS_ABC[40] = {"1","2","3","4","5","6","7","8","9","0","q","w","e","r","t","y","u","i","o","p","a","s","d","f","g","h","j","k","l","del","z","x","c","v","b","n","m","sym","space","go"};
+/* the symbols page ("#+=" key) */
+static const char *KEYS_SYM[40] = {"1","2","3","4","5","6","7","8","9","0","!","@","#","$","%","^","&","*","(",")","-","_","=","+","/","\\",":",";","'","del","\"",",",".","?","~","[","]","abc","space","go"};
+static bool kb_sym;
+#define KEYS (kb_sym ? KEYS_SYM : KEYS_ABC)
 #define MAXQ 6
 #define PAGE_ONE 24
 
@@ -74,7 +78,7 @@ typedef struct {
     char err[160];
 } Feed;
 
-enum { SET_LANG, SET_QUALITY, SET_AUTOPLAY, SET_PREFETCH, SET_SUBS, SET_SUBLANG, SET_SUBSIZE, SET_TELEX, SET_AVSYNC, SET_AUDIO, SET_BOTTOM, SET_OTA_AUTO, SET_HOME, SET_KEYS, SET_KIDS, SET_UPDATE,
+enum { SET_LANG, SET_QUALITY, SET_AUTOPLAY, SET_PREFETCH, SET_SUBS, SET_SUBLANG, SET_SUBSIZE, SET_TELEX, SET_AVSYNC, SET_AUDIO, SET_BOTTOM, SET_FPS60, SET_SLEEP_ACT, SET_OTA_AUTO, SET_HOME, SET_KEYS, SET_KIDS, SET_UPDATE,
        SET_CACHE, SET_HISTORY, SET_SEARCHES, SET_VERSION, SET_ABOUT, SET_ICON, SET_COUNT };
 #ifdef NXT_TUBE_ROM_NXREDUX
 #define SET_ROWS SET_COUNT          /* Tools-menu icon: NX Redux launcher only */
@@ -91,7 +95,8 @@ static struct {
     Feed feed[CHIPS];
     /* search */
     int subOverride;          /* this video only: 0 settings, 1 translate, 2 original, 3 off */
-    Uint32 osdAskAt, osdGateUntil; bool osdAsk; bool restart; int otaToldState;   /* firmware OSD (TrimUI Task Manager) */
+    Uint32 osdAskAt, osdGateUntil; bool osdAsk; bool restart; int otaToldState;
+    int sleepMode; Uint32 sleepAt; bool sleepFading;   /* sleep timer */   /* firmware OSD (TrimUI Task Manager) */
     char raw[96], query[300]; bool telexOff, rawLiteral; int keySel; bool results; int resultSel; float rscroll;
     int searchFocus, recentSel;
     VideoList found; int searchJob; bool channelView, foundAppend, foundEnd; char searchErr[160]; char resultTitle[160];
@@ -519,6 +524,41 @@ static bool is_playing(void) {
     PlayerStatus st; Player_status(&st);
     return A.hasCur && (st.state == PS_PLAYING || st.state == PS_BUFFERING || st.state == PS_LOADING || (A.resolveJob && st.state == PS_IDLE));
 }
+/* ---------- sleep timer ---------- */
+static const int SLEEP_MIN[] = {0, 15, 30, 45, 60, 90, -1};   /* -1: at the end of this video */
+#define SLEEP_N 7
+static bool sleep_quits(void) { return !S.sleep_pause && !(K.enabled && !parent_mode()); }   /* kids mode: never leaves the app without the PIN */
+static void sleep_label(char *out, size_t n) {
+    if (!A.sleepMode) { snprintf(out, n, "%s", T("Tắt")); return; }
+    if (SLEEP_MIN[A.sleepMode] < 0) { snprintf(out, n, "%s", T("Hết video này")); return; }
+    Uint32 now = SDL_GetTicks(); int left = (Sint32)(A.sleepAt - now) > 0 ? (int)((A.sleepAt - now + 999) / 1000) : 0;
+    snprintf(out, n, T("còn %d:%02d"), left / 60, left % 60);
+}
+static void sleep_set(int mode) {
+    A.sleepMode = mode; A.sleepFading = false; Player_setFade(1);
+    Uint32 unit = getenv("NXT_TUBE_SLEEP_SECONDS") ? 1000u : 60000u;   /* QA: minutes become seconds */
+    A.sleepAt = SLEEP_MIN[mode] > 0 ? SDL_GetTicks() + SLEEP_MIN[mode] * unit : 0;
+    if (!mode) toast("Đã tắt hẹn giờ");
+    else if (SLEEP_MIN[mode] < 0) toast(sleep_quits() ? "Hết video này sẽ thoát app" : "Hết video này sẽ dừng phát");
+    else toast(sleep_quits() ? "Thoát app sau %d phút" : "Dừng phát sau %d phút", SLEEP_MIN[mode]);
+    Log_msg("sleep timer: %s", mode ? (SLEEP_MIN[mode] < 0 ? "end of video" : "set") : "off");
+}
+static void sleep_fire(void) {
+    bool quit = sleep_quits();
+    Log_msg("sleep timer: time is up, %s", quit ? "quitting" : "pausing");
+    A.sleepMode = 0; A.sleepAt = 0; A.sleepFading = false;
+    if (quit) { save_history(); Store_save(); A.quit = true; return; }
+    Player_setPaused(true); Player_setFade(1);
+    toast("Hẹn giờ: đã dừng phát");
+}
+static void sleep_tick(Uint32 now) {
+    if (!A.sleepMode || !A.sleepAt) return;
+    Sint32 left = (Sint32)(A.sleepAt - now);
+    if (left <= 0) { sleep_fire(); return; }
+    /* the last 30 s: the sound fades out instead of stopping dead */
+    if (left < 30000) { A.sleepFading = true; Player_setFade(left / 30000.0f); }
+    else if (A.sleepFading) { A.sleepFading = false; Player_setFade(1); }
+}
 static void request_quit(void) {
     if (K.enabled) { pin_open(PIN_QUIT); return; }   /* kids mode: leaving the app needs the parent */
     A.quit = true;
@@ -566,9 +606,9 @@ static void open_panel(Panel p) {
     else if (p == PANEL_SPEED) A.panelSel = A.speedIx;
     else A.panelSel = 0;
 }
-static int options_count(void) { return 8; }
-/* row 2 is "Subtitles"; the rest keep their old numbers */
-static int opt_id(int i) { return i < 2 ? i : i == 2 ? 7 : i - 1; }
+static int options_count(void) { return 9; }
+/* rows 2-3 are "Subtitles" and "Sleep timer"; the rest keep their old numbers */
+static int opt_id(int i) { return i < 2 ? i : i == 2 ? 7 : i == 3 ? 8 : i - 2; }
 static const char *SUB_OVERRIDE[] = {"Theo cài đặt", "Bật · dịch", "Ngôn ngữ gốc", "Tắt"};
 static void subs_restart(void) {
     if (!A.hasCur || !A.streamReady) return;
@@ -576,6 +616,7 @@ static void subs_restart(void) {
 }
 static void run_option(int i) {
     switch (opt_id(i)) {
+        case 8: sleep_set((A.sleepMode + 1) % SLEEP_N); break;
         case 7: A.subOverride = (A.subOverride + 1) % 4; subs_restart(); toast("Phụ đề: %s", T(SUB_OVERRIDE[A.subOverride])); break;
         case 0: open_panel(PANEL_QUALITY); break;
         case 1: open_panel(PANEL_SPEED); break;
@@ -682,6 +723,8 @@ static void setting_change(int row, int dir) {
         }
         case SET_SUBSIZE: S.sub_size = (S.sub_size + 3 + dir) % 3; break;
         case SET_OTA_AUTO: S.ota_auto = !S.ota_auto; break;
+        case SET_FPS60: S.fps60 = !S.fps60; Player_setFull60(S.fps60); break;
+        case SET_SLEEP_ACT: S.sleep_pause = !S.sleep_pause; break;
         case SET_TELEX: S.telex = !S.telex; A.telexOff = !S.telex; break;
         case SET_AVSYNC: S.av_offset_ms += dir * 20; if (S.av_offset_ms > 400) S.av_offset_ms = 400; if (S.av_offset_ms < -400) S.av_offset_ms = -400; Player_setAvOffset(S.av_offset_ms); break;
         case SET_AUDIO: S.audio_out = (S.audio_out + 3 + dir) % 3; apply_audio();
@@ -823,7 +866,7 @@ static void screen_wake(void) {
     A.osd = true; A.osdUntil = SDL_GetTicks() + 3000;
     Log_msg("screen on");
 }
-#define QUICK_N 4
+#define QUICK_N 5
 static void pin_key(Key k);
 static void kids_key(Key k);
 static void kids_overlay_key(Key k);
@@ -843,7 +886,8 @@ static void quick_key(Key k) {
         A.quick = false;
         if (A.quickSel == 1) screen_off();
         else if (A.quickSel == 2) { if (A.kidsLock) toast("Chế độ trẻ em: đã hết giờ xem"); else if (A.hasCur) go_background(); else toast("Chưa có video đang phát"); }
-        else if (A.quickSel == 3) request_quit();
+        else if (A.quickSel == 3) { A.quick = true; sleep_set((A.sleepMode + 1) % SLEEP_N); }
+        else if (A.quickSel == 4) request_quit();
     }
 }
 /* The firmware's on-screen panel (trimui_osdd: Stock "Task Manager", NX Redux OSD).
@@ -880,6 +924,9 @@ static void handle_key(Key k) {
         return;
     }
     if (A.screenOff) { screen_wake(); return; }        /* any other key turns the screen back on */
+    if (k == K_A && A.sleepMode && A.sleepAt && (Sint32)(A.sleepAt - SDL_GetTicks()) < 60000) {
+        A.sleepAt += 15 * 60000u; A.sleepFading = false; Player_setFade(1); toast("Thêm 15 phút"); return;
+    }
     if (A.pinFor) { pin_key(k); return; }
 
     if (k == K_HOME) {
@@ -1016,7 +1063,8 @@ static void handle_key(Key k) {
         else if (k == K_L1 || k == K_R1) { if (rec->count) { A.searchFocus = 1; A.recentSel = 0; } }
         else if (k == K_A || k == K_START) {
             const char *key = KEYS[A.keySel];
-            if (k == K_A && !strcmp(key, "del")) { if (qlen) A.raw[qlen - 1] = 0; }
+            if (k == K_A && (!strcmp(key, "sym") || !strcmp(key, "abc"))) kb_sym = !kb_sym;
+            else if (k == K_A && !strcmp(key, "del")) { if (qlen) A.raw[qlen - 1] = 0; }
             else if (k == K_A && !strcmp(key, "space")) { if (qlen + 1 < sizeof(A.raw)) strcat(A.raw, " "); }
             else if (k == K_START || !strcmp(key, "go")) { update_query(); run_search(A.query); }
             else if (qlen + strlen(key) < sizeof(A.raw)) strcat(A.raw, key);
@@ -1280,11 +1328,12 @@ static void draw_search(void) {
         for (int i = 0; i < 40; i++) {
             int x = 24 + (i % 10) * 61, y = 124 + (i / 10) * 72;
             bool on = i == A.keySel && A.searchFocus == 0, go = !strcmp(KEYS[i], "go");
-            const char *label = !strcmp(KEYS[i], "del") ? T("Xóa") : !strcmp(KEYS[i], "space") ? T("Cách") : go ? (A.wordEntry ? T("Thêm") : T("Tìm")) : KEYS[i];
+            const char *label = !strcmp(KEYS[i], "del") ? T("Xóa") : !strcmp(KEYS[i], "space") ? T("Cách") : go ? (A.wordEntry ? T("Thêm") : T("Tìm")) :
+                                !strcmp(KEYS[i], "sym") ? "#+=" : !strcmp(KEYS[i], "abc") ? "abc" : KEYS[i];
             if (on) { D_round(x + 3, y + 3, 53, 64, 10, C_BLACK); x -= 2; y -= 2; }
             D_round(x, y, 53, 64, 10, on ? C_MUSTARD : go ? C_TOMATO : C_SURFACE);
             D_roundRing(x, y, 53, 64, 10, 2, on || go ? C_BLACK : C_LINE);
-            bool small = strlen(label) > 3;
+            bool small = strlen(label) > 3 || !strcmp(KEYS[i], "sym") || !strcmp(KEYS[i], "abc");
             FontFace f = !strcmp(KEYS[i], "del") ? F_REG : F_BOLD;
             int size = small ? 16 : 28;
             D_text(f, size, label, x + 26, y + 32 - D_fontHeight(f, size) / 2, on || go ? C_DARK : C_INK, 50, AL_CENTER);
@@ -1393,6 +1442,10 @@ static void setting_text(int row, char *label, size_t ln, char *value, size_t vn
         case SET_CACHE: snprintf(label, ln, "%s", T("Xóa bộ nhớ đệm")); snprintf(value, vn, "%s", "A"); snprintf(note, nn, "%s", T("Ảnh thu nhỏ và danh sách đã lưu")); break;
         case SET_HISTORY: snprintf(label, ln, "%s", T("Xóa lịch sử xem")); snprintf(value, vn, "%s", "A"); snprintf(note, nn, "%s", T("Bấm A hai lần để xác nhận")); break;
         case SET_SEARCHES: snprintf(label, ln, "%s", T("Xóa lịch sử tìm kiếm")); snprintf(value, vn, "%s", "A"); snprintf(note, nn, "%s", T("Bấm A hai lần để xác nhận")); break;
+        case SET_FPS60: snprintf(label, ln, "%s", T("60 hình/giây thật (thử nghiệm)")); snprintf(value, vn, "%s", T(onoff[S.fps60]));
+            snprintf(note, nn, "%s", T("Video 60 hình hiện đủ 60 hình: mượt hơn nhưng máy nóng và tốn pin hơn. Máy theo không kịp thì tự lùi về ~30 hình. Tắt: mát máy (mặc định).")); break;
+        case SET_SLEEP_ACT: snprintf(label, ln, "%s", T("Khi hết giờ hẹn")); snprintf(value, vn, "%s", S.sleep_pause ? T("Dừng phát") : T("Thoát app"));
+            snprintf(note, nn, "%s", T("Hẹn giờ tắt đặt trong Bảng nhanh hoặc Tùy chọn video (SELECT). 30 giây cuối tiếng nhỏ dần.")); break;
         case SET_OTA_AUTO: snprintf(label, ln, "%s", T("Tự kiểm tra cập nhật")); snprintf(value, vn, "%s", T(onoff[S.ota_auto])); snprintf(note, nn, "%s", T("Mỗi ngày một lần khi có Wi-Fi · chỉ báo, không tự cài")); break;
         case SET_UPDATE: {
             int st = Ota_state();
@@ -1550,7 +1603,7 @@ static void draw_panel(void) {
     D_text(F_REG, 17, sub, x + 20, 62, C_MUTED, 352, AL_LEFT);
     int n = A.panel == PANEL_QUALITY ? NQ : A.panel == PANEL_SPEED ? NS : options_count();
     for (int i = 0; i < n; i++) {
-        int y = 96 + i * (n > 7 ? 64 : 68);
+        int y = 96 + i * (n > 8 ? 62 : n > 7 ? 64 : 68);
         bool sel = i == A.panelSel, avail = A.panel != PANEL_QUALITY || quality_available(i);
         bool current = A.panel == PANEL_QUALITY ? i == A.quality : A.panel == PANEL_SPEED ? i == A.speedIx : false;
         char label[160], note[200];
@@ -1558,6 +1611,8 @@ static void draw_panel(void) {
         else if (A.panel == PANEL_SPEED) { snprintf(label, sizeof(label), "%s", SPEED_LABEL[i]); snprintf(note, sizeof(note), "%s", i == 2 ? T("Bình thường") : i == 0 ? T("Chậm") : i == 5 ? T("Nhanh") : ""); }
         else {
             switch (opt_id(i)) {
+                case 8: { char sl[48]; sleep_label(sl, sizeof(sl)); snprintf(label, sizeof(label), "%s · %s", T("Hẹn giờ tắt"), sl);
+                    snprintf(note, sizeof(note), "%s", T(sleep_quits() ? "A đổi thời gian · hết giờ thì thoát app" : "A đổi thời gian · hết giờ thì dừng phát")); break; }
                 case 7: snprintf(label, sizeof(label), "%s · %s", T("Phụ đề"), T(SUB_OVERRIDE[A.subOverride])); snprintf(note, sizeof(note), "%s", Subs_status()); break;
                 case 0: snprintf(label, sizeof(label), "%s", T("Chất lượng")); snprintf(note, sizeof(note), T("%s · phím %s"), T(QUALITY_LABEL[A.quality]), KN(K_X)); break;
                 case 1: snprintf(label, sizeof(label), "%s", T("Tốc độ phát")); snprintf(note, sizeof(note), T("%s · phím %s"), SPEED_LABEL[A.speedIx], KN(K_START)); break;
@@ -1721,13 +1776,16 @@ static void draw_volume(void) {
 static void draw_quick(void) {
     if (!A.quick) return;
     D_rect(0, 0, SCREEN_W, SCREEN_H, RGBA(8, 7, 12, 170));
-    int x = 232, y = 150, w = 560, h = 470;
+    int x = 232, y = 104, w = 560, h = 556;
     D_round(x + 10, y + 10, w, h, 18, C_BLACK); D_round(x, y, w, h, 18, C_SURFACE); D_roundRing(x, y, w, h, 18, 3, C_BLACK);
     D_text(F_XBOLD, 28, "Bảng nhanh", x + 28, y + 22, C_INK, 0, AL_LEFT);
     char vol[64]; snprintf(vol, sizeof(vol), "%s · %d%%", T(Sys_output()), Sys_volume() * 5);
     D_text(F_MED, 18, vol, x + w - 28, y + 30, C_MUTED, 0, AL_RIGHT);
-    const char *t[QUICK_N] = {"Tiếp tục", "Tắt màn hình · vẫn nghe", "Nghe nền (về menu)", "Thoát ứng dụng"};
-    const char *n[QUICK_N] = {"Đóng bảng này", "Như YouTube Premium · bấm nút bất kỳ để bật lại", "Ra menu máy, tiếng vẫn phát", "Dừng phát và đóng NXT Retro Tube"};
+    char sl[48], st[96], sn[160]; sleep_label(sl, sizeof(sl));
+    snprintf(st, sizeof(st), "%s · %s", T("Hẹn giờ tắt"), sl);
+    snprintf(sn, sizeof(sn), "%s", T(sleep_quits() ? "A đổi: 15 · 30 · 45 · 60 · 90 phút · hết video · tắt (thoát app)" : "A đổi: 15 · 30 · 45 · 60 · 90 phút · hết video · tắt (dừng phát)"));
+    const char *t[QUICK_N] = {"Tiếp tục", "Tắt màn hình · vẫn nghe", "Nghe nền (về menu)", st, "Thoát ứng dụng"};
+    const char *n[QUICK_N] = {"Đóng bảng này", "Như YouTube Premium · bấm nút bất kỳ để bật lại", "Ra menu máy, tiếng vẫn phát", sn, "Dừng phát và đóng NXT Retro Tube"};
     for (int i = 0; i < QUICK_N; i++) {
         int ry = y + 80 + i * 86; bool on = i == A.quickSel;
         D_round(x + 24, ry, w - 48, 74, 12, on ? C_INK : C_RAISED);
@@ -2078,8 +2136,18 @@ static void draw_kids_lock(void) {
     D_text(F_MED, 18, hint, x + w / 2, y + h - 60, C_DIM, w - 40, AL_CENTER);
 }
 
+static void draw_sleep(void) {
+    if (!A.sleepMode || !A.sleepAt || A.screenOff) return;
+    Sint32 left = (Sint32)(A.sleepAt - SDL_GetTicks());
+    if (left >= 60000) return;
+    char b[120]; snprintf(b, sizeof(b), T("Sắp tắt sau %d giây · A: thêm 15 phút"), left > 0 ? (left + 999) / 1000 : 0);
+    int w = D_textW(F_SEMI, 20, b) + 44, y = 24;
+    D_round(512 - w / 2 + 6, y + 6, w, 50, 12, C_BLACK); D_round(512 - w / 2, y, w, 50, 12, C_MUSTARD);
+    D_text(F_SEMI, 20, b, 512, y + 25 - D_fontHeight(F_SEMI, 20) / 2, C_DARK, w - 30, AL_CENTER);
+}
 static void draw_overlays(void) {
     draw_kids_lock();
+    draw_sleep();
     draw_about();
     draw_quick();
     draw_pin();
@@ -2283,8 +2351,10 @@ static void update(void) {
     if (A.hasCur && st.state == PS_ENDED && !A.endedHandled) {
         A.endedHandled = true;
         Store_addHistory(&A.cur, st.duration, st.duration); Store_save();
-        if (S.autoplay && A.qpos + 1 < A.queue.count) { toast("Video tiếp theo: %s", A.queue.items[A.qpos + 1].title); play_index(A.qpos + 1); }
+        if (A.sleepMode && SLEEP_MIN[A.sleepMode] < 0) sleep_fire();
+        else if (S.autoplay && A.qpos + 1 < A.queue.count) { toast("Video tiếp theo: %s", A.queue.items[A.qpos + 1].title); play_index(A.qpos + 1); }
     }
+    sleep_tick(now);
     /* suggestions after the current video: top up the queue when it runs short */
     if (A.hasCur) {
         int remaining = A.queue.count - A.qpos - 1;
@@ -2459,6 +2529,7 @@ int main(int argc, char **argv) {
     unsetenv("LD_PRELOAD");        /* muOS preloads its SDL overlay hooks: keep them out of the helpers */
 #endif
     Player_init(S.audio_out);
+    Player_setFull60(S.fps60);
     Sys_applyGain();
     A.lastVol = Sys_volume();
     Player_setAvOffset(S.av_offset_ms);

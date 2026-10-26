@@ -1,5 +1,5 @@
 #!/bin/bash
-# NXT Retro Tube 2.0.1 — by Nguyễn Xuân Thông — dArkOS (R36S / RG351MP-style RK3326 handhelds)
+# NXT Retro Tube 2.1 — by Nguyễn Xuân Thông — dArkOS (R36S / RG351MP-style RK3326 handhelds)
 # Ports entry: this script sits in /roms/ports (or /roms2/ports), the app in ./nxt-retro-tube
 HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 DIR="$HERE/nxt-retro-tube"

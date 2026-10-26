@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.0.1 — mã nguồn
+# NXT Retro Tube 2.1 — mã nguồn
 
 **Tác giả:** Nguyễn Xuân Thông
 **Ủng hộ tác giả:** MoMo 0339838267 · Vietcombank (VCB) 0581000786219 · PayPal thongkhung2@gmail.com
@@ -36,6 +36,12 @@ Mã ROM chọn lúc biên dịch: `-DNXT_TUBE_ROM_NXREDUX | NEXTUI | STOCK | MUO
 - Tìm kiếm InnerTube gửi `context.user.enableSafetyMode = true` (Chế độ hạn chế của YouTube) khi bật.
 - Lọc: `Kids_allowed()` áp vào trang chủ, kết quả tìm, trang kênh, hàng "Tiếp theo" và khi mở video; từ khóa so khớp sau khi bỏ dấu tiếng Việt.
 - Giao diện trong `src/main.c`: trang Cài đặt → Chế độ trẻ em (`SC_KIDS`), hộp nhập PIN, màn khóa hết giờ / ngoài giờ, màn nghỉ mắt.
+
+## Mới ở 2.1
+- Hẹn giờ tắt (`sleep_*` trong `src/main.c`): 15–90 phút hoặc hết video; thoát app / dừng phát (`settings.json`: `sleep_pause`); `Player_setFade()` hạ dần tiếng 30 s cuối; chế độ trẻ em chỉ dừng phát. QA: `NXT_TUBE_SLEEP_SECONDS=1` đổi phút thành giây.
+- `fps60` (`Player_setFull60()`): video 60 fps giải mã đủ khung (`cap30` = false); lùi về ~30 khung nếu bộ giải mã chậm (mức degrade 2 hoặc phải nhảy keyframe).
+- Bàn phím: trang ký hiệu (`KEYS_SYM`), phím `#+=` / `abc`.
+- Smart Pro S: chưa phát hành ở 2.1 (đang chờ nhật ký từ máy thật); mã `stock_sps` vẫn dựng được.
 
 ## Mới ở 2.0.1
 - Mbed TLS dựng lại với `MBEDTLS_X509_RSASSA_PSS_SUPPORT` (`third_party/include/mbedtls/mbedtls_config.h`): thiếu nó, ClientHello TLS 1.3 không có chữ ký rsa_pss_rsae_* nên máy chủ dùng chứng chỉ RSA (release-assets.githubusercontent.com, raw.githubusercontent.com) từ chối bắt tay → OTA và tải gói chữ đều lỗi. Nguồn: mbedtls-3.6.5, cùng cấu hình cũ cộng một dòng; `mbedtls_entropy_alt.o` giữ nguyên.
@@ -97,9 +103,9 @@ Mã ROM chọn lúc biên dịch: `-DNXT_TUBE_ROM_NXREDUX | NEXTUI | STOCK | MUO
 ```sh
 TOOLCHAIN=/path/to/compiler ./build.sh          # cả bảy bản -> build/<rom>/nxt-retro-tube.elf
 ROM=stock TOOLCHAIN=/path/to/compiler ./build.sh # một ROM
-RUNTIME=./runtime ./package.sh                   # dist/NXT_Retro_Tube_v2.0.1_{NXRedux,NextUI,Stock,Stock_SmartProS,muOS,Knulli,dArkOS_R36S}.zip + dist/ota-*.zip
+RUNTIME=./runtime ./package.sh                   # dist/NXT_Retro_Tube_v2.1_{NXRedux,NextUI,Stock,Stock_SmartProS,muOS,Knulli,dArkOS_R36S}.zip + dist/ota-*.zip
 ```
-Bảy tệp `.elf` dựng từ mã nguồn này (với `SOURCE_DATE_EPOCH=1793034000`) trùng từng byte với bản phát hành 2.0.1.
+Bảy tệp `.elf` dựng từ mã nguồn này (với `SOURCE_DATE_EPOCH=1793034000`) trùng từng byte với bản phát hành 2.1.
 
 ## Dựng lại launcher NX Redux 2.4.1 (icon Tools)
 ```sh

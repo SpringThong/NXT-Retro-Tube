@@ -1,9 +1,26 @@
-# NXT Retro Tube 2.0.1 — NX Redux (TrimUI Brick Pro)
+# NXT Retro Tube 2.1 — Knulli (TrimUI Brick / Brick Pro)
+
+## Yêu cầu
+- Knulli bản có hỗ trợ TrimUI Brick Pro (kho mã mới `knulli-linux`, bản 20260511 trở lên). Bản Knulli cũ "Gladiator" (2025) chưa có Brick Pro; với TrimUI Brick thường app vẫn tương thích.
+- Đã đối chiếu với mã nguồn Knulli (knulli-linux, 10/2026): bo mạch `trimui-brick-pro`, `trimui_inputd`, phím tắt `triggerhappy`, nút nguồn, PipeWire, tiết kiệm pin, cách chạy Ports. Chưa chạy thử trên máy thật.
 
 ## Cài đặt
-Chép thư mục `Tools/NXT Retro Tube.pak` vào `Tools/` trên thẻ nhớ (chép đè nếu đã có bản cũ). Mở từ Tools.
+Chép thư mục `roms` trong gói này vào phân vùng dữ liệu của Knulli (thư mục gốc có sẵn `roms/`), để có:
+- `roms/ports/NXT Retro Tube.sh`
+- `roms/ports/nxt-retro-tube/` (app)
 
-Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/shared/nxt-retro-tube`.
+Sau đó trong EmulationStation: **Menu → Cài đặt game (Game settings) → Cập nhật danh sách game (Update gamelists)** (hoặc khởi động lại). App nằm trong **Ports**.
+
+Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm trong `roms/ports/nxt-retro-tube/data`.
+
+## Mới ở 2.1
+- **Hẹn giờ tắt:** trong **Bảng nhanh** hoặc **Tùy chọn video (SELECT) → Hẹn giờ tắt**, bấm A để chọn 15 / 30 / 45 / 60 / 90 phút hoặc **Hết video này**.
+  Hết giờ thì **thoát app** (mặc định) hoặc **dừng phát** — chọn ở Cài đặt → **Khi hết giờ hẹn**. Còn 1 phút sẽ hiện nhắc, bấm **A** để thêm 15 phút;
+  30 giây cuối tiếng nhỏ dần. Vẫn đếm khi tắt màn hình / nghe nền. Khi bật Chế độ trẻ em, hết giờ chỉ dừng phát (thoát app vẫn cần PIN).
+- **60 hình/giây thật (thử nghiệm):** Cài đặt → bật để video 60 hình hiện đủ 60 hình (mượt hơn, nóng và tốn pin hơn). Mặc định tắt.
+  Nếu máy giải mã không kịp, app tự lùi về ~30 hình cho video đó để không giật, lệch tiếng.
+- **Bàn phím có ký tự đặc biệt:** phím **#+=** (hàng dưới) mở trang ký hiệu ! @ # $ % ^ & * ( ) - _ = + / \ : ; ' " , . ? ~ [ ]; phím **abc** quay lại chữ.
+- Từ bản 2.0.1, các bản mới đến **qua OTA**: Cài đặt → Cập nhật (OTA) → A.
 
 ## Mới ở 2.0.1
 - Sửa lỗi Cập nhật (OTA) báo "không kiểm tra được, cần Wi-Fi": thư viện bảo mật của app chưa hỗ trợ kiểu chữ ký RSA-PSS mà máy chủ tải tệp của GitHub dùng (TLS 1.3). Cũng sửa luôn việc tải gói chữ phụ đề Hàn / Nhật / Trung / Thái.
@@ -26,33 +43,29 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm �
 - Tua gần như tức thì trong phần đã tải; tua xa nhảy tới khung hình chính gần nhất.
 - Video 60 khung/giây luôn khớp tiếng (hiện tối đa ~30 hình/giây trên máy).
 - Hàng "Tiếp theo" cuộn được, tự tải thêm video gợi ý; tự phát video kế.
-- Nút âm lượng cho loa, tai nghe 3.5 mm và DAC USB, có hiện mức âm lượng.
+- Nút âm lượng: hệ điều hành chỉnh loa / tai nghe, app hiện mức âm lượng; với DAC USB app tự chỉnh mức riêng.
 - Nút nguồn: tắt đen màn hình, vẫn nghe (như YouTube Premium). Bấm nút bất kỳ (trừ âm lượng) để bật lại.
-- Nút Home bên hông: Bảng nhanh (Tiếp tục · Tắt màn hình · Nghe nền · Thoát). Nút logo TrimUI: thoát ngay.
+- Nút Home bên hông (Brick Pro): Bảng nhanh (Tiếp tục · Tắt màn hình · Nghe nền · Thoát). Nút MENU (logo) bấm riêng rồi thả: thoát.
 - Nghe nền (về menu máy, tiếng vẫn phát), Xem sau, Theo dõi kênh, Tải về máy (720p) xem không cần mạng.
-- USB DAC ở cả hai cổng USB-C (cổng sạc: bật trong Cài đặt).
+- USB DAC qua PipeWire của hệ thống, ở cả hai cổng USB-C (cổng sạc: bật trong Cài đặt).
 - Cài đặt: ngôn ngữ, chất lượng mặc định, tự phát tiếp, lấy luồng trước, Telex, bù trễ tiếng–hình, đầu ra âm thanh, cổng sạc cho DAC, kiểu trang chủ, đổi phím, xóa bộ nhớ đệm / lịch sử / lượt tìm, phiên bản, tác giả · ủng hộ, phụ đề (chế độ, ngôn ngữ, cỡ chữ), chế độ trẻ em.
+
 
 ## Phím
 | Màn hình | Phím |
 |---|---|
-| Mọi nơi | Logo TrimUI: thoát · Home bên hông: Bảng nhanh · Nguồn: tắt/bật màn hình · Âm lượng ± |
+| Mọi nơi | MENU (bấm riêng): thoát · MENU + Âm lượng: độ sáng (của hệ thống) · Home bên hông: Bảng nhanh · Nguồn: tắt/bật màn hình · Âm lượng ± |
 | Trang chủ / Thư viện | D-pad chọn · A xem · Y tìm kiếm · X Xem sau · L1/R1 đổi mục con · L2/R2 đổi mục chính · START làm mới · SELECT mở lại video đang phát · B thoát (đang phát thì hỏi Nghe nền / Thoát) |
 | Xem video | A phát/dừng · Trái/Phải tua 10 giây · L2/R2 tua 60 giây · L1/R1 video trước/sau · X chất lượng · START tốc độ · SELECT tùy chọn · Y toàn màn hình · Xuống: hàng Tiếp theo · B về |
 | Hàng Tiếp theo | Trái/Phải chọn (không tua) · L2/R2 nhảy 4 video · A xem · Lên quay lại |
-| Tìm kiếm | A gõ · B xóa chữ / về · Y dấu cách · X xóa hết · SELECT Telex · START tìm · L1/R1 lượt tìm gần đây · L2/R2 đổi mục chính |
+| Tìm kiếm | A gõ (phím #+= mở ký hiệu, abc về chữ) · B xóa chữ / về · Y dấu cách · X xóa hết · SELECT Telex · START tìm · L1/R1 lượt tìm gần đây · L2/R2 đổi mục chính |
 
-## Icon trong menu Tools
-Launcher NX Redux gán icon cho Tools bằng danh sách cố định trong mã, nên app kèm launcher dựng lại từ đúng mã nguồn NX Redux,
-chỉ thêm hai dòng: "NXT Retro Tube" và "NXT Retro Music" (icon của cả hai app):
-- **NX Redux 2.4.1** (bản mới, kho `nx-redux/nx-handheld`, tag v2.4.1): nhận diện qua `.system/version.txt` = v2.4.1.
-- NX Redux 2.1.2 (bản cũ): nhận diện bằng mã SHA-256 của launcher gốc / launcher NXT Retro Music.
 
-App chỉ thay launcher khi đúng một trong hai phiên bản trên, sao lưu launcher cũ vào `integration/backup/`, và cài luôn
-`menu_icon_nxt_tube.png` (cùng `menu_icon_nxt.png` của NXT Retro Music nếu máy chưa có).
-Gỡ: Cài đặt → "Icon trong menu Tools" → bấm A hai lần. Sau lần mở app đầu tiên, khởi động lại máy để thấy icon.
-Khi NX Redux cập nhật lên bản mới hơn 2.4.1, launcher mới của NX Redux sẽ thay launcher này (icon mất, app vẫn chạy bình thường)
-cho tới khi có bản NXT Retro Tube hỗ trợ phiên bản đó.
+## Khác với bản NextUI / NX Redux
+- Âm thanh đi qua PipeWire của Knulli; nút âm lượng do Knulli xử lý (`knulli-audio`), app chỉ hiện mức (Bảng nhanh: Trái/Phải chỉnh âm lượng hệ thống).
+- Phím đọc theo mã phím (evdev) của tay cầm `TRIMUI Brick (Pro) Controller` do `trimui_inputd` tạo, nên đúng phím dù số thứ tự nút khác bản gốc TrimUI. Không chiếm phím của hệ thống.
+- MENU là phím Hotkey của Knulli (MENU + Âm lượng = độ sáng, MENU + START = khởi động lại giao diện): app chỉ coi là "thoát" khi bấm MENU một mình rồi thả.
+- Không cần SDL2_image hay thư viện cài thêm: app chỉ dùng SDL2 có sẵn của Knulli (bản có trình điều khiển hình PowerVR GE8300).
 
 ## Chế độ trẻ em (phụ huynh quản lý)
 Vào **Cài đặt → Chế độ trẻ em**. Lần đầu bật sẽ yêu cầu đặt **mã PIN phụ huynh 4 số** (nhập 2 lần).
@@ -89,7 +102,7 @@ Xem video nói tiếng nước ngoài, app tự hiện **phụ đề dịch sang
 - **Ngôn ngữ phụ đề:** "Theo app" (Tiếng Việt hoặc English theo ngôn ngữ giao diện), hoặc chọn: Tiếng Việt, English, Español,
   Français, Deutsch, Português, Italiano, Bahasa Indonesia (có sẵn), **Tiếng Hàn, Tiếng Nhật, Tiếng Trung, Tiếng Thái** (cần tải gói chữ).
 - **Tải gói chữ:** chọn ngôn ngữ đó rồi bấm **A** (một lần; Hàn ~10 MB, Nhật ~9 MB, Trung ~17 MB, Thái <1 MB). Phần ghi chú hiện % đang tải.
-  Gói chữ (font Noto Sans của Google, giấy phép SIL OFL) được kiểm tra mã SHA-256 rồi lưu vào `.userdata/shared/nxt-retro-tube/fonts`. Xóa thư mục đó để gỡ.
+  Gói chữ (font Noto Sans của Google, giấy phép SIL OFL) được kiểm tra mã SHA-256 rồi lưu vào `roms/ports/nxt-retro-tube/data/fonts`. Xóa thư mục đó để gỡ.
 - **Cỡ chữ phụ đề:** Nhỏ / Vừa / Lớn.
 
 **Đổi riêng cho video đang xem:** SELECT (Tùy chọn video) → **Phụ đề**, bấm A để đổi: Theo cài đặt → Bật · dịch (sang ngôn ngữ của bạn)
@@ -109,13 +122,17 @@ video đã tải về máy xem không cần mạng thì không có phụ đề.
 - Cần Wi-Fi và còn trống khoảng 100 MB trên thẻ nhớ khi cập nhật yt-dlp / Deno.
 
 ## Nghe nền
-Đang phát video, bấm B ở trang chủ → "Nghe nền (chỉ tiếng)": app tắt hình, về menu, tiếng vẫn phát và tự chuyển video tiếp.
-Mở lại app từ Tools để quay về đúng chỗ đang nghe.
+Đang phát video, bấm B ở trang chủ → "Nghe nền (chỉ tiếng)" (hoặc Home → Nghe nền): app tắt hình, về EmulationStation, tiếng vẫn phát và tự chuyển video tiếp.
+Mở lại app để quay về đúng chỗ đang nghe.
+
+## Tắt màn hình vẫn nghe
+Bấm nút nguồn (nhấn nhanh) khi đang ở trong app: màn hình tắt đen, tiếng vẫn phát. Bấm nút bất kỳ (trừ âm lượng) để bật lại.
+Trong lúc app mở, app đặt cờ `power-button.wake` để Knulli không ngủ khi nhấn nhanh nút nguồn, và tạm dừng chế độ tiết kiệm pin (tự tối/tự ngủ). Lưu ý: khi app đang mở, **giữ nút nguồn để tắt máy không có tác dụng** — thoát app trước (MENU) rồi tắt máy.
+Khi đang Nghe nền ở EmulationStation, nút nguồn hoạt động bình thường của Knulli (ngủ máy thì tiếng dừng).
 
 ## Đổi phím
 Cài đặt → Đổi phím: chọn chức năng, bấm A rồi bấm nút muốn gán (hai chức năng sẽ đổi chỗ cho nhau).
-Y = đổi chỗ A/B nhanh, X = về mặc định. D-pad và nút logo không đổi được.
-
+Y = đổi chỗ A/B nhanh, X = về mặc định. D-pad, MENU, Home và nút âm lượng không đổi được.
 
 ## Tác giả & ủng hộ
 NXT Retro Tube do **Nguyễn Xuân Thông** làm. Nếu thấy app hữu ích, bạn có thể ủng hộ tác giả:
@@ -126,6 +143,6 @@ NXT Retro Tube do **Nguyễn Xuân Thông** làm. Nếu thấy app hữu ích, b
 Trong app: Cài đặt → **Tác giả · Ủng hộ**.
 
 ## Khi có lỗi
-Gửi lại `NXT_Tube_Log.txt` (trong thư mục app) và `.userdata/shared/nxt-retro-tube/cache/ytdlp-helper-0.txt`.
+Gửi lại `NXT_Tube_Log.txt` (trong thư mục app), `data/cache/nxt-retro-tube-run.txt` và `data/cache/ytdlp-helper-0.txt`.
 
 Ứng dụng không liên kết với YouTube/Google. Giấy phép: thư mục `licenses`.

@@ -1,6 +1,6 @@
 {
   "name": "NXT Retro Tube",
-  "version": "2.0.1",
+  "version": "2.1",
   "package": "vn.nguyenxuanthong.nxtretrotube",
   "rom": "muos",
   "device": "trimui-brick-pro",

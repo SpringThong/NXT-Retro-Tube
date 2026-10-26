@@ -31,6 +31,8 @@ void Settings_load(void) {
         if (json_object_has_value(o, "prefetch")) S.prefetch = json_object_get_boolean(o, "prefetch") == 1;
         if (json_object_has_value(o, "telex")) S.telex = json_object_get_boolean(o, "telex") == 1;
         if (json_object_has_value(o, "bottom_dac")) S.bottom_dac = json_object_get_boolean(o, "bottom_dac") == 1;
+        if (json_object_has_value(o, "sleep_pause")) S.sleep_pause = json_object_get_boolean(o, "sleep_pause") == 1;
+        if (json_object_has_value(o, "fps60")) S.fps60 = json_object_get_boolean(o, "fps60") == 1;
         if (json_object_has_value(o, "ota_auto")) S.ota_auto = json_object_get_boolean(o, "ota_auto") == 1;
         if (json_object_has_value(o, "sub_mode")) S.sub_mode = (int)json_object_get_number(o, "sub_mode");
         if (json_object_has_value(o, "sub_size")) S.sub_size = (int)json_object_get_number(o, "sub_size");
@@ -59,6 +61,8 @@ void Settings_save(void) {
     json_object_set_boolean(o, "telex", S.telex);
     json_object_set_boolean(o, "bottom_dac", S.bottom_dac);
     json_object_set_boolean(o, "ota_auto", S.ota_auto);
+    json_object_set_boolean(o, "sleep_pause", S.sleep_pause);
+    json_object_set_boolean(o, "fps60", S.fps60);
     json_object_set_number(o, "sub_mode", S.sub_mode);
     json_object_set_number(o, "sub_size", S.sub_size);
     json_object_set_string(o, "sub_lang", S.sub_lang);

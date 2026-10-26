@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define APP_NAME "NXT Retro Tube"
-#define APP_VERSION "2.0.1"
+#define APP_VERSION "2.1"
 #define APP_AUTHOR "Nguyễn Xuân Thông"
 #define DONATE_MOMO "0339838267"
 #define DONATE_BANK "VCB 0581000786219"
@@ -171,6 +171,8 @@ void Player_status(PlayerStatus *);
 /* Upload the frame due now into *texture (created/resized as needed). */
 bool Player_present(SDL_Renderer *, SDL_Texture **texture, int *w, int *h);
 bool Player_frameDue(void);
+void Player_setFade(float f);          /* sleep timer: 0..1 on top of the gain */
+void Player_setFull60(bool on);        /* decode every frame of 60 fps video (default: up to 30 shown) */
 bool Yt_deferred(const char *id);
 bool Player_wantsBoost(void);
 void Player_releaseTexture(void);
@@ -225,7 +227,7 @@ int AudioRoute_setBottom(bool host);
 /* settings.c */
 #define KM_COUNT 10
 typedef struct { int lang, av_offset_ms, audio_out, home_mode, dac_volume; bool autoplay, prefetch, telex, bottom_dac; int keymap[KM_COUNT];
-                 int sub_mode, sub_size; char sub_lang[16]; bool ota_auto; } Settings;
+                 int sub_mode, sub_size; char sub_lang[16]; bool ota_auto, sleep_pause, fps60; } Settings;
 extern Settings S;
 void Settings_load(void);
 void Settings_save(void);

@@ -161,6 +161,8 @@ static struct {
     int width, height; double fps; char vcodec[24], acodec[24]; double kbps;
     struct SwsContext *sws; uint8_t *conv[4]; int conv_ls[4]; int conv_w, conv_h;
     int degrade; bool hifps, resyncing;
+    bool full60, cap30;   /* full60: setting; cap30: this 60 fps video shows up to ~30 pictures a second */
+    float fade;
     bool boost;            /* this video needed full CPU speed once: keep it */
     Uint32 last_show; unsigned shown, stat_frames, stat_drop; Uint32 stat_at, stat_upload_ms; 
     double latency, user_offset; bool usb_out; float gain;    /* audio output latency estimate + user A/V offset (s) */
@@ -241,7 +243,7 @@ static void audio_callback(void *u, Uint8 *stream, int len) {
             }
         }
         P.clock_ticks = SDL_GetTicks();
-        if (P.gain < 0.999f) for (int i = 0; i < done * 2; i++) out[i] *= P.gain;
+        { float g = P.gain * P.fade; if (g < 0.999f) for (int i = 0; i < done * 2; i++) out[i] *= g; }
         if (done < frames) {
             if (P.aq.eof && P.audio_eof_done && !P.rcount) P.ended = true;
             else if (!P.live || P.rcount == 0) { P.buffering = true; Log_msg("underrun at %.2f s", P.clock_pts); }
@@ -358,12 +360,17 @@ static void *video_thread(void *u) {
         /* Adaptive quality: when decoding falls behind the audio clock, skip the
          * deblocking filter first, then non-reference frames, instead of
          * letting picture and sound drift apart. */
-        if (pkt && late && behind > 0.25 && P.degrade < 2) { P.degrade++; P.boost = true; Log_msg("decoder behind %.2fs: degrade level %d", behind, P.degrade); }
+        if (pkt && late && behind > 0.25 && P.degrade < 2) {
+            P.degrade++; P.boost = true; Log_msg("decoder behind %.2fs: degrade level %d", behind, P.degrade);
+            /* "real 60 fps" asked but this device cannot keep up with this video: back to the light mode */
+            if (P.degrade >= 2 && P.hifps && !P.cap30) { P.cap30 = true; Log_msg("60 fps: decoder cannot keep up, showing up to 30 pictures a second"); }
+        }
         else if (pkt && P.degrade > 0 && behind < -0.5 && !P.hifps) { P.degrade = 0; }
         /* far behind the sound: stop decoding until the next keyframe and rejoin there,
          * instead of showing pictures that trail the audio */
         if (pkt && P.started && !P.paused && behind > 0.7 && !(pkt->flags & AV_PKT_FLAG_KEY)) {
             if (!P.resyncing) { P.resyncing = true; Log_msg("video %.2fs behind: skipping to the next keyframe", behind); }
+            if (P.hifps && !P.cap30) { P.cap30 = true; P.degrade = 2; Log_msg("60 fps: decoder cannot keep up, showing up to 30 pictures a second"); }
             pthread_mutex_lock(&P.lock); P.dropped++; pthread_mutex_unlock(&P.lock);
             av_packet_free(&pkt); continue;
         }
@@ -372,7 +379,7 @@ static void *video_thread(void *u) {
         /* 60 fps on four A53 cores: no deblocking and no non-reference pictures from the
          * start (about half the work); shown at up to 30 fps, in step with the sound */
         P.vdec->skip_loop_filter = P.degrade >= 1 || P.hifps ? AVDISCARD_ALL : P.vdec->height >= 1000 ? AVDISCARD_NONREF : AVDISCARD_DEFAULT;
-        P.vdec->skip_frame = P.hifps || (P.degrade >= 2 && behind > 0.4) ? AVDISCARD_NONREF : AVDISCARD_DEFAULT;
+        P.vdec->skip_frame = P.cap30 || (P.degrade >= 2 && behind > 0.4) ? AVDISCARD_NONREF : AVDISCARD_DEFAULT;
         int r = avcodec_send_packet(P.vdec, pkt);
         av_packet_free(&pkt);
         if (r < 0 && r != AVERROR(EAGAIN) && r != AVERROR_EOF) continue;
@@ -598,7 +605,7 @@ static void *opener(void *u) {
         AVStream *st = vd->fmt->streams[vd->vidx];
         P.vtb = st->time_base;
         P.fps = av_q2d(st->avg_frame_rate) > 0 ? av_q2d(st->avg_frame_rate) : s->video_fps;
-        P.hifps = P.fps > 40 || (P.fps > 31 && st->codecpar->height >= 1000);
+        P.hifps = P.fps > 40 || (P.fps > 31 && st->codecpar->height >= 1000); P.cap30 = P.hifps && !P.full60;
         snprintf(P.vcodec, sizeof(P.vcodec), "%s", avcodec_get_name(st->codecpar->codec_id));
         P.width = st->codecpar->width; P.height = st->codecpar->height;
     }
@@ -700,7 +707,7 @@ static bool open_device(void) {
 }
 #endif
 bool Player_init(int mode) {
-    P.gain = 1.0f;
+    P.gain = 1.0f; P.fade = 1.0f;
     pthread_mutex_init(&P.lock, NULL);
     pthread_cond_init(&P.cond, NULL);
     avformat_network_init();
@@ -774,7 +781,7 @@ bool Player_open(const PlayerSource *src) {
     P.state = PS_LOADING; P.started = P.paused = P.ended = P.audio_eof_done = false; P.buffering = true;
     P.live = src->live; P.audio_only = src->audio_only;
     P.duration = 0; P.start = src->start; P.error[0] = 0;
-    P.decoded = P.dropped = 0; P.av_offset_ms = 0; P.degrade = 0; P.hifps = P.resyncing = false; P.boost = false; P.stat_at = 0;
+    P.decoded = P.dropped = 0; P.av_offset_ms = 0; P.degrade = 0; P.hifps = P.resyncing = P.cap30 = false; P.boost = false; P.stat_at = 0;
     P.width = src->video_height * 16 / 9; P.height = src->video_height; P.fps = src->video_fps; P.kbps = src->video_kbps;
     P.vcodec[0] = P.acodec[0] = 0;
     P.preview = true;
@@ -858,7 +865,7 @@ static void *switcher(void *u) {
     AVStream *st = P.dx[0].fmt->streams[P.dx[0].vidx];
     P.vtb = st->time_base;
     P.fps = av_q2d(st->avg_frame_rate) > 0 ? av_q2d(st->avg_frame_rate) : q->fps;
-    P.hifps = P.fps > 40 || (P.fps > 31 && st->codecpar->height >= 1000); P.resyncing = false;
+    P.hifps = P.fps > 40 || (P.fps > 31 && st->codecpar->height >= 1000); P.cap30 = P.hifps && !P.full60; P.resyncing = false;
     snprintf(P.vcodec, sizeof(P.vcodec), "%s", avcodec_get_name(st->codecpar->codec_id));
     P.width = st->codecpar->width; P.height = st->codecpar->height; P.kbps = q->kbps;
     P.has_video = true; P.audio_only = false; P.degrade = 0; P.vgen++;
@@ -909,6 +916,8 @@ bool Player_switchVideo(const PlayerSource *src) {
     return ok;
 }
 void Player_setAvOffset(int ms) { pthread_mutex_lock(&P.lock); P.user_offset = ms / 1000.0; pthread_mutex_unlock(&P.lock); }
+void Player_setFade(float f) { pthread_mutex_lock(&P.lock); P.fade = f < 0 ? 0 : f > 1 ? 1 : f; pthread_mutex_unlock(&P.lock); }
+void Player_setFull60(bool on) { pthread_mutex_lock(&P.lock); P.full60 = on; if (P.hifps) P.cap30 = !on; pthread_mutex_unlock(&P.lock); }
 void Player_setGain(float g) { pthread_mutex_lock(&P.lock); P.gain = g < 0 ? 0 : g > 1 ? 1 : g; pthread_mutex_unlock(&P.lock); }
 double Player_latencyMs(void) { return P.latency * 1000; }
 bool Player_switching(void) { return P.switcher_on && !P.switch_done; }
@@ -1096,7 +1105,7 @@ bool Player_frameDue(void) {
         else if (P.state == PS_PLAYING) {
             double clock = now_position_locked();
             due = P.fpts[P.fhead] <= clock + 0.004;
-            if (due && P.hifps && SDL_GetTicks() - P.last_show < 28) due = false;
+            if (due && P.cap30 && SDL_GetTicks() - P.last_show < 28) due = false;
         }
     }
     pthread_mutex_unlock(&P.lock);
@@ -1124,10 +1133,10 @@ bool Player_present(SDL_Renderer *r, SDL_Texture **texture, int *w, int *h) {
             }
             if ((running && pts <= clock + 0.004) || P.preview) {
                 /* high frame rates: upload at most ~30 pictures a second, always the newest due one */
-                if (P.hifps && running && !P.preview && show == NULL && P.fcount > 1 && P.fpts[(i + 1) % VFRAMES] <= clock + 0.004) {
+                if (P.cap30 && running && !P.preview && show == NULL && P.fcount > 1 && P.fpts[(i + 1) % VFRAMES] <= clock + 0.004) {
                     av_frame_unref(P.frames[i]); P.fhead = (P.fhead + 1) % VFRAMES; P.fcount--; P.stat_drop++; continue;
                 }
-                if (P.hifps && running && !P.preview && SDL_GetTicks() - P.last_show < 28 && P.fcount > 1) break;
+                if (P.cap30 && running && !P.preview && SDL_GetTicks() - P.last_show < 28 && P.fcount > 1) break;
                 if (show) av_frame_free(&show);
                 show = av_frame_alloc(); av_frame_move_ref(show, P.frames[i]);
                 P.av_offset_ms = (int)lround((pts - clock) * 1000);
