@@ -9,6 +9,12 @@ còn **video toàn màn hình dùng hết màn 16:9 ở độ phân giải gốc
 - Nút **MENU** mở **Bảng nhanh** của app (Tiếp tục · Tắt màn hình vẫn nghe · Nghe nền · Thoát).
 - Độ sáng giữ đúng mức hệ thống; "Tắt màn hình · vẫn nghe" trả lại đúng độ sáng cũ khi bật lại.
 
+**Bản 2.1 cho Smart Pro S sửa lỗi mở app bị văng** (màn hình đen rồi về menu). Nguyên nhân: thư viện đồ họa của firmware không mở được
+GPU theo cách app dùng trên Brick. Giờ app tự thử lần lượt nhiều cách mở màn hình (GPU như cũ → GPU qua driver Mali → các driver hiển thị khác
+→ SDL của hệ thống → cuối cùng vẽ bằng CPU) và **nhớ cách chạy được** cho các lần sau. Lần mở đầu tiên có thể chậm hơn vài giây.
+Nếu máy phải dùng cách vẽ bằng CPU thì vẫn xem được bình thường, chỉ ấm máy hơn một chút.
+Từ bản này Smart Pro S cũng **cập nhật được qua OTA** (Cài đặt → Cập nhật).
+
 Mình chưa có máy Smart Pro S để thử trực tiếp: nếu gặp lỗi (màn hình xoay sai, phím không đúng, không có tiếng…), gửi tệp
 `.userdata/nxt-tube-stock/shared/nxt-retro-tube/cache/nxt-retro-tube-run.txt` cho tác giả để sửa ở bản sau (qua OTA).
 

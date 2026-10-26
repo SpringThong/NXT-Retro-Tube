@@ -291,6 +291,71 @@ static void play_index(int i) {
 }
 
 /* ---------- display lifecycle ---------- */
+#ifdef NXT_TUBE_DEV_TG5050
+/* Smart Pro S (A523, stock firmware). The firmware's own SDL (/usr/trimui/lib) could not load
+ * the GLES library for a plain GL window ("Could not initialize OpenGL / GLES library"), so the
+ * display is opened step by step and the first way that works is kept:
+ *   1. GPU as on the Brick           2. GPU with the Mali driver named explicitly
+ *   3. GPU through SDL's KMS/DRM     4. CPU drawing (only at the last launch stage)
+ * launch.sh runs up to three stages: 0 firmware SDL, 1 system SDL (/usr/lib), 2 firmware SDL
+ * plus the CPU fallback; the app exits with code 3 to ask for the next stage. */
+static int sps_stage(void) { const char *e = getenv("NXT_TUBE_DISPLAY_STAGE"); return e ? atoi(e) : 2; }
+static bool sps_try(const char *what, Uint32 flags, Uint32 rflags) {
+    int ww = 1280, wh = 720;
+    SDL_DisplayMode dm;
+    if (!SDL_GetDesktopDisplayMode(0, &dm) && dm.w > 0 && dm.h > 0) { ww = dm.w > dm.h ? dm.w : dm.h; wh = dm.w > dm.h ? dm.h : dm.w; }
+    { const char *wsz = getenv("NXT_TUBE_WINDOW"); int x, y; if (wsz && sscanf(wsz, "%dx%d", &x, &y) == 2 && x > 0 && y > 0) { ww = x; wh = y; } }   /* QA */
+    A.win = SDL_CreateWindow(APP_NAME, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, ww, wh, flags);
+    if (!A.win) { Log_msg("display [%s] %s: window %dx%d: %s", SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "?", what, ww, wh, SDL_GetError()); return false; }
+    A.ren = SDL_CreateRenderer(A.win, -1, rflags | SDL_RENDERER_PRESENTVSYNC);
+    if (!A.ren) A.ren = SDL_CreateRenderer(A.win, -1, rflags);
+    if (!A.ren) { Log_msg("display [%s] %s: renderer: %s", SDL_GetCurrentVideoDriver(), what, SDL_GetError()); SDL_DestroyWindow(A.win); A.win = NULL; return false; }
+    SDL_RendererInfo info; SDL_GetRendererInfo(A.ren, &info);
+    Log_msg("display [%s] %s: %dx%d, renderer %s", SDL_GetCurrentVideoDriver(), what, ww, wh, info.name);
+    return true;
+}
+static bool sps_reinit(const char *driver) {
+    SDL_QuitSubSystem(SDL_INIT_VIDEO);
+    if (driver) setenv("SDL_VIDEODRIVER", driver, 1); else unsetenv("SDL_VIDEODRIVER");
+    if (SDL_InitSubSystem(SDL_INIT_VIDEO)) { Log_msg("display: video driver %s: %s", driver ? driver : "(default)", SDL_GetError()); return false; }
+    return true;
+}
+static bool sps_open_display(void) {
+    SDL_version v; SDL_GetVersion(&v);
+    char drivers[200] = ""; for (int i = 0; i < SDL_GetNumVideoDrivers(); i++) { size_t l = strlen(drivers); snprintf(drivers + l, sizeof(drivers) - l, "%s%s", l ? "," : "", SDL_GetVideoDriver(i)); }
+    Log_msg("display: stage %d, SDL %d.%d.%d, driver %s, available %s, LD_LIBRARY_PATH=%s", sps_stage(), v.major, v.minor, v.patch,
+            SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "?", drivers, getenv("LD_LIBRARY_PATH") ? getenv("LD_LIBRARY_PATH") : "");
+    const char *drv = getenv("SDL_VIDEODRIVER");
+    if (drv && (!strcmp(drv, "dummy") || !strcmp(drv, "offscreen")) && !getenv("NXT_TUBE_DISPLAY_TEST")) return sps_try("QA", 0, SDL_RENDERER_SOFTWARE);   /* QA */
+    Uint32 gl = SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP;
+    if (sps_try("GPU", gl, SDL_RENDERER_ACCELERATED)) return true;
+    static const char *const MALI[][2] = {{"libEGL.so.1", "libGLESv2.so.2"}, {"/usr/lib/libmali.so", "/usr/lib/libmali.so"}, {"/usr/lib/libEGL.so", "/usr/lib/libGLESv2.so"}};
+    for (int i = 0; i < 3; i++) {
+        if (access(MALI[i][0], R_OK) && MALI[i][0][0] == '/') continue;
+        setenv("SDL_VIDEO_EGL_DRIVER", MALI[i][0], 1); setenv("SDL_VIDEO_GL_DRIVER", MALI[i][1], 1);   /* read by SDL_GL_LoadLibrary */
+        char what[120]; snprintf(what, sizeof(what), "GPU (%s)", MALI[i][1]);
+        if (sps_try(what, gl, SDL_RENDERER_ACCELERATED)) return true;
+    }
+    unsetenv("SDL_VIDEO_EGL_DRIVER"); unsetenv("SDL_VIDEO_GL_DRIVER");
+    /* every other video driver this SDL offers (KMSDRM, mali, fbdev...) */
+    char first[32]; snprintf(first, sizeof(first), "%s", SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "");
+    int nd = SDL_GetNumVideoDrivers(); char names[12][32]; int nn = 0;
+    for (int i = 0; i < nd && nn < 12; i++) snprintf(names[nn++], sizeof(names[0]), "%s", SDL_GetVideoDriver(i));
+    for (int i = 0; i < nn; i++) {
+        const char *d = names[i];
+        if (!strcasecmp(d, first) || !strcasecmp(d, "dummy") || !strcasecmp(d, "offscreen") || !strcasecmp(d, "evdev")) continue;
+        if (!sps_reinit(d)) continue;
+        char what[64]; snprintf(what, sizeof(what), "GPU (%s)", d);
+        if (sps_try(what, gl, SDL_RENDERER_ACCELERATED)) return true;
+    }
+    if (strcmp(SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "", first)) sps_reinit(first[0] ? first : NULL);
+    if (sps_stage() < 2) { Log_msg("display: no GPU path in this stage, asking launch.sh for the next one"); return false; }
+    /* last resort: the CPU draws (warmer, but the app always opens) */
+    if (sps_try("CPU", SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN_DESKTOP, SDL_RENDERER_SOFTWARE)) return true;
+    if (sps_try("CPU window", SDL_WINDOW_SHOWN, SDL_RENDERER_SOFTWARE)) return true;
+    return false;
+}
+#endif
 static bool create_display(void) {
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
     SDL_SetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION, "1");
@@ -299,22 +364,13 @@ static bool create_display(void) {
 #else
     SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
 #endif
+#ifdef NXT_TUBE_DEV_TG5050
+    if (!sps_open_display()) return false;
+#else
     const char *drv = getenv("SDL_VIDEODRIVER");
     Uint32 wflags = SDL_WINDOW_SHOWN;
     if (!drv || (strcmp(drv, "dummy") && strcmp(drv, "offscreen"))) wflags |= SDL_WINDOW_OPENGL;
-#ifdef NXT_TUBE_DEV_TG5050
-    /* Smart Pro S: a 1280x720 panel (KMS/DRM); the 4:3 layout is centred, full-screen video uses the whole panel */
     int ww = SCREEN_W, wh = SCREEN_H;
-    if (wflags & SDL_WINDOW_OPENGL) {
-        ww = 1280; wh = 720;
-        SDL_DisplayMode dm;
-        if (!SDL_GetDesktopDisplayMode(0, &dm) && dm.w > 0 && dm.h > 0) { ww = dm.w > dm.h ? dm.w : dm.h; wh = dm.w > dm.h ? dm.h : dm.w; }
-        wflags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-        Log_msg("display %dx%d", ww, wh);
-    }
-#else
-    int ww = SCREEN_W, wh = SCREEN_H;
-#endif
     { const char *wsz = getenv("NXT_TUBE_WINDOW"); int x, y; if (wsz && sscanf(wsz, "%dx%d", &x, &y) == 2 && x > 0 && y > 0) { ww = x; wh = y; } }   /* QA */
     A.win = SDL_CreateWindow(APP_NAME, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, ww, wh, wflags);
     if (!A.win) { Log_msg("window: %s", SDL_GetError()); return false; }
@@ -323,6 +379,7 @@ static bool create_display(void) {
     if (!A.ren) { Log_msg("renderer: %s", SDL_GetError()); return false; }
     SDL_RendererInfo info; SDL_GetRendererInfo(A.ren, &info);
     Log_msg("renderer %s, %d texture formats", info.name, info.num_texture_formats);
+#endif
     SDL_RenderSetLogicalSize(A.ren, SCREEN_W, SCREEN_H);
     SDL_SetRenderDrawBlendMode(A.ren, SDL_BLENDMODE_BLEND);
     SDL_ShowCursor(SDL_DISABLE);
@@ -2509,8 +2566,28 @@ int main(int argc, char **argv) {
     Settings_load();
     Kids_load();
     Innertube_setSafety(K.enabled);
+#ifdef NXT_TUBE_DEV_TG5050
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
+        /* the default video driver did not start: try each one this SDL has */
+        Log_msg("SDL_Init: %s", SDL_GetError());
+        bool ok = false;
+        if (!SDL_Init(SDL_INIT_EVENTS)) for (int i = 0; i < SDL_GetNumVideoDrivers() && !ok; i++) {
+            const char *d = SDL_GetVideoDriver(i);
+            if (!strcasecmp(d, "dummy") || !strcasecmp(d, "offscreen") || !strcasecmp(d, "evdev")) continue;
+            setenv("SDL_VIDEODRIVER", d, 1);
+            ok = !SDL_InitSubSystem(SDL_INIT_VIDEO);
+            Log_msg("video driver %s: %s", d, ok ? "ok" : SDL_GetError());
+        }
+        if (!ok) { Session_quit(); SDL_Quit(); return 3; }
+    }
+#else
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) { Log_msg("SDL_Init: %s", SDL_GetError()); Session_quit(); return 1; }
+#endif
+#ifdef NXT_TUBE_DEV_TG5050
+    if (!create_display()) { Session_quit(); SDL_Quit(); return 3; }   /* launch.sh tries the next display stage */
+#else
     if (!create_display()) { Session_quit(); SDL_Quit(); return 1; }
+#endif
     open_joystick();
     char res[1200]; snprintf(res, sizeof(res), "%s/res", paths.app);
     if (!D_init(A.ren, res)) { Log_msg("fonts missing in %s", res); }

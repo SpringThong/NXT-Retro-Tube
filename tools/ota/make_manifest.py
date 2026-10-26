@@ -30,6 +30,7 @@ def main():
     ap.add_argument('--notes-en', help='text file, English release notes')
     ap.add_argument('--key', help='PEM private key (else $OTA_SIGNING_KEY)')
     ap.add_argument('--base-url', help='override the download URL prefix (tests)')
+    ap.add_argument('--reuse', help='an earlier ota.json: components not in --assets keep its entries (and URLs)')
     a = ap.parse_args()
 
     base = a.base_url or 'https://github.com/%s/releases/download/%s' % (a.repo, a.tag)
@@ -56,6 +57,12 @@ def main():
         print('%-22s %-12s %10d  %s' % (comp, info['version'], comps[comp]['size'], name))
     if not app_version:
         sys.exit('no ota-app-*.zip in %s' % a.assets)
+    if a.reuse:
+        old = json.load(open(a.reuse, encoding='utf-8'))
+        for comp, entry in old.get('components', {}).items():
+            if comp not in comps:
+                comps[comp] = entry
+                print('%-22s %-12s %10d  (kept: %s)' % (comp, entry['version'], entry['size'], entry['url']))
 
     def text(p):
         return open(p, encoding='utf-8').read().strip() if p else ''

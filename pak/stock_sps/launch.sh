@@ -8,9 +8,14 @@ export USERDATA_PATH="$STOCK_DATA/system" SHARED_USERDATA_PATH="$STOCK_DATA/shar
 export NXT_TUBE_RUNTIME_DIR="/tmp/nxt-retro-tube-stock-$(id -u)"
 export NXT_TUBE_SOCKET="$NXT_TUBE_RUNTIME_DIR/session.sock"
 mkdir -p "$USERDATA_PATH" "$SHARED_USERDATA_PATH/nxt-retro-tube/cache" "$NXT_TUBE_RUNTIME_DIR" || exit 1
-export LD_LIBRARY_PATH="$DIR/bin/tg5040:/usr/trimui/lib:${LD_LIBRARY_PATH:-}:/usr/lib:/lib"
-# KMS/DRM display (A523): let SDL pick it; the firmware keeps keymon (volume, power, Home)
-unset SDL_VIDEODRIVER
+# Display stages (see sps_open_display in src/main.c): 0 = firmware SDL (/usr/trimui/lib) with GPU,
+# 1 = system SDL (/usr/lib) with GPU, 2 = firmware SDL with GPU, else CPU drawing. The app exits
+# with code 3 when a stage has no way to open the screen; the stage that works is remembered.
+LD_TRIMUI="$DIR/bin/tg5040:/usr/trimui/lib:${LD_LIBRARY_PATH:-}:/usr/lib:/lib"
+LD_SYSTEM="$DIR/bin/tg5040:/usr/lib:/lib:/usr/trimui/lib:${LD_LIBRARY_PATH:-}"
+STAGE_FILE="$STOCK_DATA/display-stage"
+STAGE=$(cat "$STAGE_FILE" 2>/dev/null); case "$STAGE" in 0|1|2) ;; *) STAGE=0 ;; esac
+# the firmware keeps keymon (volume, power, Home); the video driver it sets is kept too
 export SDL_AUDIODRIVER=alsa LIBASOUND_THREAD_SAFE=0
 chmod +x "$DIR/bin/deno" "$DIR/bin/yt-dlp-runtime/yt-dlp" "$DIR/bin/tg5040/nxt-retro-tube.elf" 2>/dev/null || :
 BIN="$DIR/bin/tg5040/nxt-retro-tube.elf"
@@ -61,15 +66,26 @@ if [ -f "$DIR/.ota/pending" ]; then
         rm -rf "$DIR/.ota/backup" "$DIR/.ota/pending" "$DIR/.ota/tries"
     fi
 fi
-"$BIN" > "$LOG" 2>&1 &
-PID=$!
+start_app() {
+    if [ "$STAGE" = 1 ]; then export LD_LIBRARY_PATH="$LD_SYSTEM"; else export LD_LIBRARY_PATH="$LD_TRIMUI"; fi
+    export NXT_TUBE_DISPLAY_STAGE="$STAGE"
+    echo "launch.sh: display stage $STAGE" >> "$LOG"
+    "$BIN" >> "$LOG" 2>&1 &
+    PID=$!
+}
+: > "$LOG"
+start_app
 N=0
 while [ "$N" -lt 300 ]; do
     if [ -f "$NXT_TUBE_SOCKET.state" ]; then
         read VIS SPID < "$NXT_TUBE_SOCKET.state"
-        if [ "$VIS" = VISIBLE ] && kill -0 "$SPID" 2>/dev/null; then break; fi
+        if [ "$VIS" = VISIBLE ] && kill -0 "$SPID" 2>/dev/null; then echo "$STAGE" > "$STAGE_FILE"; break; fi
     fi
-    if ! kill -0 "$PID" 2>/dev/null && [ ! -f "$NXT_TUBE_SOCKET.state" ]; then exit 1; fi
+    if ! kill -0 "$PID" 2>/dev/null && [ ! -f "$NXT_TUBE_SOCKET.state" ]; then
+        wait "$PID"; RC=$?
+        if [ "$RC" = 3 ] && [ "$STAGE" -lt 2 ]; then STAGE=$((STAGE + 1)); start_app; N=0; continue; fi
+        exit 1
+    fi
     N=$((N+1)); sleep 0.1
 done
 # back to the stock Apps menu once the app hides; playback stays in the app process
