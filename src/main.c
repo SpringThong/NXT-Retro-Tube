@@ -213,10 +213,38 @@ static int pick_video(void) {
     if (best < 0) best = s->nvideo - 1;
     return best;
 }
+/* live: the HLS quality that matches the chosen quality (same rules as pick_video) */
+static int pick_live(void) {
+    StreamInfo *s = &A.stream;
+    if (!s->nhls) return -1;
+    const char *q = QUALITY_ID[A.quality];
+    int want = !strcmp(q, "1080") ? 1080 : !strcmp(q, "480") ? 480 : !strcmp(q, "360") ? 360 : 720;
+    bool allow60 = !strcmp(q, "720p60") || !strcmp(q, "auto") || !strcmp(q, "1080");
+#ifdef NXT_TUBE_ROM_DARKOS
+    if (!strcmp(q, "auto")) { want = 480; allow60 = false; }
+#endif
+    int best = -1, best_key = -1, low = 0;
+    for (int i = 0; i < s->nhls; i++) {
+        if (s->hlsv[i].height < s->hlsv[low].height) low = i;
+        if (s->hlsv[i].height > want) continue;
+        bool hi = s->hlsv[i].fps > 30;
+        int key = s->hlsv[i].height * 4 + (allow60 ? (hi ? 2 : 1) : (hi ? 1 : 2));
+        if (key > best_key) { best_key = key; best = i; }
+    }
+    return best >= 0 ? best : low;
+}
 static bool quality_available(int qi) {
     const char *q = QUALITY_ID[qi];
     if (!strcmp(q, "auto") || !strcmp(q, "audio")) return true;
     if (A.localPlayback) return false;
+    for (int i = 0; A.stream.info.live && i < A.stream.nhls; i++) {
+        int h = A.stream.hlsv[i].height; bool hi = A.stream.hlsv[i].fps > 30;
+        if (!strcmp(q, "1080") && h == 1080) return true;
+        if (!strcmp(q, "720p60") && h == 720 && hi) return true;
+        if (!strcmp(q, "720") && h == 720) return true;
+        if (!strcmp(q, "480") && h == 480) return true;
+        if (!strcmp(q, "360") && h == 360) return true;
+    }
     for (int i = 0; i < A.stream.nvideo; i++) {
         StreamFormat *f = &A.stream.video[i];
         if (!strcmp(q, "1080") && f->height == 1080) return true;
@@ -246,7 +274,16 @@ static void start_player(double start, bool keep_position) {
         src.headers = s->headers; src.user_agent = s->user_agent;
         src.live = s->info.live;
         int vi = pick_video();
-        if (s->info.live && s->hls) { src.muxed_url = s->hls; src.video_height = 720; }
+        int lv = s->info.live ? pick_live() : -1;
+        if (lv >= 0 && audio_only) {   /* sound only: the smallest quality, video not decoded (cool, little data) */
+            for (int i = 0; i < s->nhls; i++) if (s->hlsv[i].bw < s->hlsv[lv].bw || (s->hlsv[i].bw == s->hlsv[lv].bw && s->hlsv[i].height < s->hlsv[lv].height)) lv = i;
+            src.audio_only = true;
+        }
+        if (lv >= 0) {
+            src.muxed_url = s->hlsv[lv].url; src.video_height = s->hlsv[lv].height; src.video_fps = s->hlsv[lv].fps;
+            Log_msg("live: %dp%s", s->hlsv[lv].height, s->hlsv[lv].fps > 30 ? "60" : "");
+        }
+        else if (s->info.live && s->hls) { src.muxed_url = s->hls; src.video_height = 720; }
         else if (vi >= 0 && s->audio.url) {
             StreamFormat *f = &s->video[vi];
             src.video_url = f->url; src.video_size = f->size; src.video_height = f->height; src.video_fps = f->fps; src.video_codec = f->codec; src.video_kbps = f->tbr;
@@ -320,6 +357,63 @@ static bool sps_reinit(const char *driver) {
     if (SDL_InitSubSystem(SDL_INIT_VIDEO)) { Log_msg("display: video driver %s: %s", driver ? driver : "(default)", SDL_GetError()); return false; }
     return true;
 }
+/* DRM master: only one program may drive the panel. The TrimUI menu (MainUI) may still hold
+ * it while it shows its loading spinner; then SDL refuses KMSDRM and falls back to the
+ * invisible "offscreen" driver. So: wait for the panel to be free (up to 6 s), note who holds
+ * it, and if it never frees up exit with code 4 so launch.sh can park the holder. */
+#include <sys/ioctl.h>
+#include <dirent.h>
+#define NXT_DRM_SET_MASTER _IO('d', 0x1e)
+#define NXT_DRM_DROP_MASTER _IO('d', 0x1f)
+static void sps_drm_holders(char *out, size_t n, bool save) {
+    out[0] = 0;
+    char file[1200] = ""; FILE *hf = NULL;
+    const char *rt = getenv("NXT_TUBE_RUNTIME_DIR");
+    if (save && rt) { snprintf(file, sizeof(file), "%s/drm-holders", rt); hf = fopen(file, "w"); }
+    DIR *d = opendir("/proc"); struct dirent *e;
+    while (d && (e = readdir(d))) {
+        char *end; long pid = strtol(e->d_name, &end, 10);
+        if (*end || pid <= 1 || pid == getpid()) continue;
+        char fdd[64]; snprintf(fdd, sizeof(fdd), "/proc/%ld/fd", pid);
+        DIR *f = opendir(fdd); struct dirent *g; bool has = false;
+        while (f && !has && (g = readdir(f))) {
+            char lp[96], tgt[128]; snprintf(lp, sizeof(lp), "%s/%s", fdd, g->d_name);
+            ssize_t l = readlink(lp, tgt, sizeof(tgt) - 1); if (l <= 0) continue; tgt[l] = 0;
+            if (!strncmp(tgt, "/dev/dri/card", 13)) has = true;
+        }
+        if (f) closedir(f);
+        if (!has) continue;
+        char cp[64], comm[40] = "?"; snprintf(cp, sizeof(cp), "/proc/%ld/comm", pid);
+        FILE *c = fopen(cp, "r"); if (c) { if (fgets(comm, sizeof(comm), c)) comm[strcspn(comm, "\n")] = 0; fclose(c); }
+        size_t ol = strlen(out); snprintf(out + ol, n - ol, "%s%s(%ld)", ol ? ", " : "", comm, pid);
+        if (hf) fprintf(hf, "%ld %s\n", pid, comm);
+    }
+    if (d) closedir(d);
+    if (hf) fclose(hf);
+}
+static int sps_drm_wait(void) {      /* 1 free, 0 held by another program, -1 no DRM device */
+    char dev[64] = "";
+    DIR *d = opendir("/dev/dri"); struct dirent *e;
+    while (d && (e = readdir(d))) if (!strncmp(e->d_name, "card", 4) && !dev[0]) snprintf(dev, sizeof(dev), "/dev/dri/%s", e->d_name);
+    if (d) closedir(d);
+    if (!dev[0]) { Log_msg("display: no /dev/dri/card*"); return -1; }
+    char who[400];
+    int tries = getenv("NXT_TUBE_DRM_PARKED") ? 15 : 60;    /* already parked: the menu is gone, do not wait long */
+    for (int t = 0; t < tries; t++) {
+        int fd = open(dev, O_RDWR | O_CLOEXEC);
+        if (fd < 0) { Log_msg("display: %s: %s", dev, strerror(errno)); return -1; }
+        int r = ioctl(fd, NXT_DRM_SET_MASTER, 0);
+        if (!r) ioctl(fd, NXT_DRM_DROP_MASTER, 0);
+        close(fd);
+        if (!r) { if (t) Log_msg("display: %s free after %.1f s", dev, t / 10.0); return 1; }
+        if (t % 10 == 0) { sps_drm_holders(who, sizeof(who), false); Log_msg("display: %s is held by another program (%s), waiting", dev, who[0] ? who : "?"); }
+        SDL_Delay(100);
+    }
+    sps_drm_holders(who, sizeof(who), true);
+    if (!who[0]) { Log_msg("display: %s refuses master but no other program has it open: going on", dev); return 1; }
+    Log_msg("display: %s still held after %.1f s by %s", dev, tries / 10.0, who);
+    return 0;
+}
 static bool sps_open_display(void) {
     SDL_version v; SDL_GetVersion(&v);
     char drivers[200] = ""; for (int i = 0; i < SDL_GetNumVideoDrivers(); i++) { size_t l = strlen(drivers); snprintf(drivers + l, sizeof(drivers) - l, "%s%s", l ? "," : "", SDL_GetVideoDriver(i)); }
@@ -350,6 +444,8 @@ static bool sps_open_display(void) {
     }
     if (strcmp(SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "", first)) sps_reinit(first[0] ? first : NULL);
     if (sps_stage() < 2) { Log_msg("display: no GPU path in this stage, asking launch.sh for the next one"); return false; }
+    {   const char *cur = SDL_GetCurrentVideoDriver(), *vd = getenv("SDL_VIDEODRIVER");
+        if (cur && (!strcasecmp(cur, "offscreen") || !strcasecmp(cur, "dummy")) && !(vd && getenv("NXT_TUBE_DISPLAY_TEST"))) { Log_msg("display: no visible driver for CPU drawing"); return false; } }
     /* last resort: the CPU draws (warmer, but the app always opens) */
     if (sps_try("CPU", SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN_DESKTOP, SDL_RENDERER_SOFTWARE)) return true;
     if (sps_try("CPU window", SDL_WINDOW_SHOWN, SDL_RENDERER_SOFTWARE)) return true;
@@ -2567,6 +2663,15 @@ int main(int argc, char **argv) {
     Kids_load();
     Innertube_setSafety(K.enabled);
 #ifdef NXT_TUBE_DEV_TG5050
+    int drm = 1;
+    {   const char *vd = getenv("SDL_VIDEODRIVER");
+        bool qa = vd && (!strcmp(vd, "dummy") || !strcmp(vd, "offscreen"));
+        if (!qa || getenv("NXT_TUBE_DISPLAY_TEST")) drm = sps_drm_wait();
+        /* never let SDL drop to the invisible offscreen driver because of a race on DRM master */
+        setenv("SDL_KMSDRM_REQUIRE_DRM_MASTER", "0", 0);
+        if (drm == 0 && !getenv("NXT_TUBE_DRM_PARKED")) { Log_msg("display: asking launch.sh to park the program holding the screen"); Session_quit(); return 4; }
+        if (!qa && vd && (!strcasecmp(vd, "offscreen") || !vd[0])) unsetenv("SDL_VIDEODRIVER");
+    }
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
         /* the default video driver did not start: try each one this SDL has */
         Log_msg("SDL_Init: %s", SDL_GetError());
@@ -2584,6 +2689,19 @@ int main(int argc, char **argv) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) { Log_msg("SDL_Init: %s", SDL_GetError()); Session_quit(); return 1; }
 #endif
 #ifdef NXT_TUBE_DEV_TG5050
+    {   /* SDL picked the invisible offscreen driver: insist on the real panel */
+        const char *cur = SDL_GetCurrentVideoDriver(), *vd = getenv("SDL_VIDEODRIVER");
+        bool qa = vd && (!strcmp(vd, "dummy") || !strcmp(vd, "offscreen")) && !getenv("NXT_TUBE_DISPLAY_TEST");
+        if (!qa && cur && (!strcasecmp(cur, "offscreen") || !strcasecmp(cur, "dummy"))) {
+            Log_msg("display: SDL chose %s (invisible), trying KMSDRM", cur);
+            SDL_QuitSubSystem(SDL_INIT_VIDEO); setenv("SDL_VIDEODRIVER", "KMSDRM", 1);
+            if (SDL_InitSubSystem(SDL_INIT_VIDEO)) {
+                Log_msg("display: KMSDRM: %s", SDL_GetError());
+                Session_quit(); SDL_Quit();
+                return drm == 0 && !getenv("NXT_TUBE_DRM_PARKED") ? 4 : 3;
+            }
+        }
+    }
     if (!create_display()) { Session_quit(); SDL_Quit(); return 3; }   /* launch.sh tries the next display stage */
 #else
     if (!create_display()) { Session_quit(); SDL_Quit(); return 1; }

@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.1 — firmware gốc TrimUI (Stock) — TrimUI Smart Pro S
+# NXT Retro Tube 2.1.1 — firmware gốc TrimUI (Stock) — TrimUI Smart Pro S
 
 ## Cài đặt
 Chép thư mục `Apps/NXT_Retro_Tube` vào `Apps/` trên thẻ nhớ (firmware gốc Smart Pro S 1.0.1 trở lên). Mở từ mục Apps (icon NXT Retro Tube).
@@ -19,6 +19,15 @@ Mình chưa có máy Smart Pro S để thử trực tiếp: nếu gặp lỗi (m
 `.userdata/nxt-tube-stock/shared/nxt-retro-tube/cache/nxt-retro-tube-run.txt` cho tác giả để sửa ở bản sau (qua OTA).
 
 Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/nxt-tube-stock/shared/nxt-retro-tube`.
+
+## Mới ở 2.1.1
+- **Sửa lỗi xem live chỉ được 240p:** trước đây app đưa cả danh sách chất lượng của luồng trực tiếp cho bộ phát, bộ phát tự chọn mức thấp (thường 240p).
+  Giờ app đọc danh sách đó trước và mở **đúng chất lượng đang chọn** (Tự động = 720p, 60 hình nếu live có; chọn 1080p / 720p / 480p / 360p cũng được áp dụng cho live).
+  Live cũng vào nhanh hơn vì bộ phát chỉ tải một mức chất lượng. Khi nghe nền / tắt màn hình / Chỉ âm thanh, live tự chuyển sang mức nhỏ nhất và không giải mã hình (mát máy, ít dữ liệu).
+- **Smart Pro S: sửa lỗi mở app bị thoát ngay** (nhật ký báo "KMSDRM not available", app rơi vào màn hình ảo vô hình). Nguyên nhân: menu của firmware
+  (MainUI) vẫn giữ quyền điều khiển màn hình khi app mở. Giờ app chờ màn hình rảnh (tối đa 6 giây); nếu menu vẫn giữ thì `launch.sh` tạm dừng menu,
+  mở app, và **khi thoát app (hoặc chuyển sang nghe nền) thì khởi động lại menu như cũ**. Máy nhớ cách này nên các lần sau mở nhanh.
+  App không bao giờ chạy trên màn hình ảo nữa. Chương trình giữ màn hình được ghi vào nhật ký (`drm-holders`) để dễ sửa nếu còn lỗi.
 
 ## Mới ở 2.1
 - **Hẹn giờ tắt:** trong **Bảng nhanh** hoặc **Tùy chọn video (SELECT) → Hẹn giờ tắt**, bấm A để chọn 15 / 30 / 45 / 60 / 90 phút hoặc **Hết video này**.

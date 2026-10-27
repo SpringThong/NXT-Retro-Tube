@@ -1,11 +1,16 @@
-# NXT Retro Tube 2.1 — NextUI (TrimUI Brick / Brick Pro)
+# NXT Retro Tube 2.1.1 — firmware gốc TrimUI (Stock) — TrimUI Brick / Brick Pro
 
 ## Cài đặt
-Chép thư mục `Tools/tg5040/NXT Retro Tube.pak` vào `Tools/tg5040/` trên thẻ nhớ. Mở từ Tools.
+Chép thư mục `Apps/NXT_Retro_Tube` vào `Apps/` trên thẻ nhớ. Mở từ mục Apps (icon NXT Retro Tube).
 
-Trên NextUI, launcher không có icon riêng cho Tools nên app hiện theo tên (không thay launcher).
+Trong lúc app hiện trên màn hình, app tạm dừng keymon của firmware (giống NXT Retro Music) để tự xử lý nút nguồn, âm lượng và Home; khi về menu hoặc thoát, keymon chạy lại bình thường. Nút Home bên hông mở bảng nhanh (Task Manager) của firmware nếu có.
 
-Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/shared/nxt-retro-tube`.
+Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/nxt-tube-stock/shared/nxt-retro-tube`.
+
+## Mới ở 2.1.1
+- **Sửa lỗi xem live chỉ được 240p:** trước đây app đưa cả danh sách chất lượng của luồng trực tiếp cho bộ phát, bộ phát tự chọn mức thấp (thường 240p).
+  Giờ app đọc danh sách đó trước và mở **đúng chất lượng đang chọn** (Tự động = 720p, 60 hình nếu live có; chọn 1080p / 720p / 480p / 360p cũng được áp dụng cho live).
+  Live cũng vào nhanh hơn vì bộ phát chỉ tải một mức chất lượng. Khi nghe nền / tắt màn hình / Chỉ âm thanh, live tự chuyển sang mức nhỏ nhất và không giải mã hình (mát máy, ít dữ liệu).
 
 ## Mới ở 2.1
 - **Hẹn giờ tắt:** trong **Bảng nhanh** hoặc **Tùy chọn video (SELECT) → Hẹn giờ tắt**, bấm A để chọn 15 / 30 / 45 / 60 / 90 phút hoặc **Hết video này**.
@@ -23,7 +28,7 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm �
 - **Cập nhật OTA ngay trên máy:** Cài đặt → **Cập nhật (OTA)** → A. App tự nhận ra ROM và máy đang dùng để tải đúng bản; chỉ tải phần nào có bản mới.
 - **Video thiếu nhi (made for kids) nhanh hơn nhiều:** bộ giải mã JavaScript chạy thường trú và nhớ trình phát của YouTube, nên chỉ video đầu tiên sau khi YouTube đổi trình phát còn chậm; các video sau mở gần nhanh như video thường. App nhớ cách lấy luồng nào chạy được để thử trước và lấy sẵn video kế tiếp.
 - Nút Home bên hông: một lần bấm chỉ tính một lần (không còn mở rồi tắt ngay). Khi bảng Task Manager / OSD của hệ thống đang mở, app không nhận phím nữa.
-
+- Stock: độ sáng trong app giữ đúng mức bạn chỉnh ở hệ thống (trước đây bị tối hơn).
 ## Tính năng
 - Giao diện kiểu app YouTube trên điện thoại, phong cách retro; tiếng Việt / English.
 - Trang chủ "Dành cho bạn" theo lịch sử tìm kiếm và kênh đã xem; các mục Âm nhạc, Game retro, Chill & Lofi, Hoạt hình, Trực tiếp, Mới tải lên; danh sách không giới hạn.
@@ -88,7 +93,7 @@ Xem video nói tiếng nước ngoài, app tự hiện **phụ đề dịch sang
 - **Ngôn ngữ phụ đề:** "Theo app" (Tiếng Việt hoặc English theo ngôn ngữ giao diện), hoặc chọn: Tiếng Việt, English, Español,
   Français, Deutsch, Português, Italiano, Bahasa Indonesia (có sẵn), **Tiếng Hàn, Tiếng Nhật, Tiếng Trung, Tiếng Thái** (cần tải gói chữ).
 - **Tải gói chữ:** chọn ngôn ngữ đó rồi bấm **A** (một lần; Hàn ~10 MB, Nhật ~9 MB, Trung ~17 MB, Thái <1 MB). Phần ghi chú hiện % đang tải.
-  Gói chữ (font Noto Sans của Google, giấy phép SIL OFL) được kiểm tra mã SHA-256 rồi lưu vào `.userdata/shared/nxt-retro-tube/fonts`. Xóa thư mục đó để gỡ.
+  Gói chữ (font Noto Sans của Google, giấy phép SIL OFL) được kiểm tra mã SHA-256 rồi lưu vào `.userdata/nxt-tube-stock/shared/nxt-retro-tube/fonts`. Xóa thư mục đó để gỡ.
 - **Cỡ chữ phụ đề:** Nhỏ / Vừa / Lớn.
 
 **Đổi riêng cho video đang xem:** SELECT (Tùy chọn video) → **Phụ đề**, bấm A để đổi: Theo cài đặt → Bật · dịch (sang ngôn ngữ của bạn)
@@ -125,6 +130,6 @@ NXT Retro Tube do **Nguyễn Xuân Thông** làm. Nếu thấy app hữu ích, b
 Trong app: Cài đặt → **Tác giả · Ủng hộ**.
 
 ## Khi có lỗi
-Gửi lại `NXT_Tube_Log.txt` (trong thư mục app) và `.userdata/shared/nxt-retro-tube/cache/ytdlp-helper-0.txt`.
+Gửi lại `NXT_Tube_Log.txt` (trong thư mục app) và `.userdata/nxt-tube-stock/shared/nxt-retro-tube/cache/ytdlp-helper-0.txt`.
 
 Ứng dụng không liên kết với YouTube/Google. Giấy phép: thư mục `licenses`.

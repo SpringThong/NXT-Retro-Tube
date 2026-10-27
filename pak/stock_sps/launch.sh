@@ -1,5 +1,5 @@
 #!/bin/sh
-# NXT Retro Tube 2.1 — by Nguyễn Xuân Thông — official TrimUI firmware (Stock), TrimUI Smart Pro S (TG5050)
+# NXT Retro Tube 2.1.1 — by Nguyễn Xuân Thông — official TrimUI firmware (Stock), TrimUI Smart Pro S (TG5050)
 DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)" || exit 1
 cd "$DIR" || exit 1
 STOCK_DATA="/mnt/SDCARD/.userdata/nxt-tube-stock"
@@ -38,7 +38,67 @@ recover() {
         rm -f "$M"
     done
 }
+# --- the screen (DRM master) -------------------------------------------------------
+# If the TrimUI menu keeps the panel while the app starts, the app exits with code 4.
+# Then the program holding /dev/dri/card* is parked: its parent shell loop (if any) is
+# paused so it does not respawn it, the holder is stopped, and everything is put back
+# (menu restarted) when the app closes or goes to the background. Remembered for next time.
+PARK_FILE="$STOCK_DATA/display-park"
+PARKED=""
+drm_holders() {
+    for P in /proc/[0-9]*; do
+        HP=${P#/proc/}
+        [ "$HP" = "$$" ] && continue
+        for F in "$P"/fd/*; do
+            case "$(readlink "$F" 2>/dev/null)" in /dev/dri/card*) echo "$HP $(sed -n 's/^PPid:[[:space:]]*//p' "$P/status" 2>/dev/null) $(cat "$P/comm" 2>/dev/null)"; break ;; esac
+        done
+    done
+}
+park() {
+    [ -n "$PARKED" ] && return 0
+    drm_holders > "$NXT_TUBE_RUNTIME_DIR/park-list"
+    while read HP PP HC; do
+        case "$HC" in nxt-retro-tube*|keymon|trimui_inputd|trimui_osdd|init|"") continue ;; esac
+        [ -d "/proc/$HP" ] || continue
+        case " $PARKED " in *" $PP "*) kill -TERM "$HP" 2>/dev/null; continue ;; esac   # a child of a parked program
+        PC=$(cat "/proc/$PP/comm" 2>/dev/null)
+        { tr '\0' ' ' < "/proc/$HP/cmdline" > "$NXT_TUBE_RUNTIME_DIR/parked-$HP.cmd"
+          readlink "/proc/$HP/cwd" > "$NXT_TUBE_RUNTIME_DIR/parked-$HP.cwd"
+          tr '\0' '\n' < "/proc/$HP/environ" > "$NXT_TUBE_RUNTIME_DIR/parked-$HP.env"; } 2>/dev/null
+        echo "$HC" > "$NXT_TUBE_RUNTIME_DIR/parked-$HP.comm"
+        LOOP=""
+        case "$PC" in sh|ash|bash|*.sh) if [ "$PP" != 1 ] && [ "$PP" != "$$" ] && kill -STOP "$PP" 2>/dev/null; then LOOP="$PP"; fi ;; esac
+        echo "$LOOP" > "$NXT_TUBE_RUNTIME_DIR/parked-$HP.loop"
+        echo "launch.sh: parking $HC ($HP), parent $PC ($PP)${LOOP:+ paused}" >> "$LOG"
+        kill -TERM "$HP" 2>/dev/null
+        I=0; while [ -d "/proc/$HP" ] && [ "$I" -lt 20 ]; do sleep 0.1; I=$((I+1)); done
+        [ -d "/proc/$HP" ] && kill -KILL "$HP" 2>/dev/null
+        PARKED="$PARKED $HP"
+    done < "$NXT_TUBE_RUNTIME_DIR/park-list"
+    [ -n "$PARKED" ]
+}
+unpark() {
+    for HP in $PARKED; do
+        LOOP=$(cat "$NXT_TUBE_RUNTIME_DIR/parked-$HP.loop" 2>/dev/null)
+        HC=$(cat "$NXT_TUBE_RUNTIME_DIR/parked-$HP.comm" 2>/dev/null)
+        if [ -n "$LOOP" ] && [ -d "/proc/$LOOP" ]; then
+            kill -CONT "$LOOP" 2>/dev/null          # its loop starts the menu again
+            echo "launch.sh: resumed $HC's parent ($LOOP)" >> "$LOG"
+        else
+            CMD=$(cat "$NXT_TUBE_RUNTIME_DIR/parked-$HP.cmd" 2>/dev/null); CWD=$(cat "$NXT_TUBE_RUNTIME_DIR/parked-$HP.cwd" 2>/dev/null)
+            if [ -n "$CMD" ]; then
+                ( cd "${CWD:-/}" 2>/dev/null
+                  while IFS= read -r L; do case "$L" in *=*) export "$L" ;; esac; done < "$NXT_TUBE_RUNTIME_DIR/parked-$HP.env"
+                  exec setsid $CMD > /dev/null 2>&1 ) &
+                echo "launch.sh: restarted $HC: $CMD" >> "$LOG"
+            fi
+        fi
+        rm -f "$NXT_TUBE_RUNTIME_DIR"/parked-"$HP".*
+    done
+    PARKED=""
+}
 finish() {
+    unpark
     if [ -f "$NXT_TUBE_SOCKET.state" ]; then
         read VIS SPID < "$NXT_TUBE_SOCKET.state"
         kill -0 "$SPID" 2>/dev/null && return    # still playing in the background
@@ -69,21 +129,30 @@ fi
 start_app() {
     if [ "$STAGE" = 1 ]; then export LD_LIBRARY_PATH="$LD_SYSTEM"; else export LD_LIBRARY_PATH="$LD_TRIMUI"; fi
     export NXT_TUBE_DISPLAY_STAGE="$STAGE"
-    echo "launch.sh: display stage $STAGE" >> "$LOG"
-    "$BIN" >> "$LOG" 2>&1 &
+    echo "launch.sh: display stage $STAGE${PARKED:+ (screen parked)}" >> "$LOG"
+    "$BIN" >> "$LOG" 2>&1 &          # SIGHUP stays ignored (trap below) if the menu that started us is parked
     PID=$!
 }
+trap '' HUP          # the menu that started us may be parked: keep running
 : > "$LOG"
+if [ "$(cat "$PARK_FILE" 2>/dev/null)" = 1 ]; then park; export NXT_TUBE_DRM_PARKED=1; fi
 start_app
 N=0
 while [ "$N" -lt 300 ]; do
     if [ -f "$NXT_TUBE_SOCKET.state" ]; then
         read VIS SPID < "$NXT_TUBE_SOCKET.state"
-        if [ "$VIS" = VISIBLE ] && kill -0 "$SPID" 2>/dev/null; then echo "$STAGE" > "$STAGE_FILE"; break; fi
+        if [ "$VIS" = VISIBLE ] && kill -0 "$SPID" 2>/dev/null; then
+            echo "$STAGE" > "$STAGE_FILE"
+            if [ -n "$NXT_TUBE_DRM_PARKED" ]; then echo 1 > "$PARK_FILE"; else rm -f "$PARK_FILE"; fi
+            break
+        fi
     fi
     if ! kill -0 "$PID" 2>/dev/null && [ ! -f "$NXT_TUBE_SOCKET.state" ]; then
         wait "$PID"; RC=$?
         if [ "$RC" = 3 ] && [ "$STAGE" -lt 2 ]; then STAGE=$((STAGE + 1)); start_app; N=0; continue; fi
+        # 4 = the screen is held: park its holder (if one can be found) and start once more either way
+        if [ "$RC" = 4 ] && [ -z "$NXT_TUBE_DRM_PARKED" ]; then park; export NXT_TUBE_DRM_PARKED=1; start_app; N=0; continue; fi
+        echo "launch.sh: app ended with code $RC" >> "$LOG"
         exit 1
     fi
     N=$((N+1)); sleep 0.1

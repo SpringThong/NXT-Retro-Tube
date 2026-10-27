@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define APP_NAME "NXT Retro Tube"
-#define APP_VERSION "2.1"
+#define APP_VERSION "2.1.1"
 #define APP_AUTHOR "Nguyễn Xuân Thông"
 #define DONATE_MOMO "0339838267"
 #define DONATE_BANK "VCB 0581000786219"
@@ -89,6 +89,8 @@ typedef struct {
     StreamFormat audio;       /* audio-only DASH */
     StreamFormat muxed;       /* progressive fallback (itag 18) */
     char *hls;                /* live HLS manifest */
+    struct { int height, fps; long bw; char *url; } hlsv[10];   /* live: one entry per quality (media playlists) */
+    int nhls;
     char *headers;            /* "Key: value\r\n" lines */
     char user_agent[300];
     long long fetched_at;     /* unix seconds */

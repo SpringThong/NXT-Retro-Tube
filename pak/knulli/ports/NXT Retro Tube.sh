@@ -1,5 +1,5 @@
 #!/bin/bash
-# NXT Retro Tube 2.1 — by Nguyễn Xuân Thông — Knulli (TrimUI Brick / Brick Pro)
+# NXT Retro Tube 2.1.1 — by Nguyễn Xuân Thông — Knulli (TrimUI Brick / Brick Pro)
 # Ports entry: this script sits in /userdata/roms/ports, the app in ./nxt-retro-tube
 HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 DIR="$HERE/nxt-retro-tube"

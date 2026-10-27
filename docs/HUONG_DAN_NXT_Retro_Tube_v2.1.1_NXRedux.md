@@ -1,14 +1,14 @@
-# NXT Retro Tube 2.1 — muOS (TrimUI Brick / Brick Pro)
-
-## Yêu cầu
-- muOS bản có hỗ trợ TrimUI Brick Pro (`tui-brick-pro`, ví dụ 2606 "Andromeda" trở lên). TrimUI Brick thường (`tui-brick`) cũng dùng được.
-- Đã đối chiếu với mã nguồn muOS (MustardOS internal + frontend, 10/2026): cấu hình máy `tui-brick-pro`, dịch vụ phím `muinput`, PipeWire, cách chạy ứng dụng (`mux_launch.sh`), cờ nguồn/ngủ. Chưa chạy thử trên máy thật.
+# NXT Retro Tube 2.1.1 — NX Redux (TrimUI Brick Pro)
 
 ## Cài đặt
-Chép thư mục `MUOS/application/NXT Retro Tube` vào `MUOS/application/` trên thẻ nhớ đang chứa thư mục `MUOS` (thẻ 1, hoặc thẻ 2 nếu bạn để dữ liệu muOS ở thẻ 2).
-Mở từ **Applications** (Ứng dụng) → **NXT Retro Tube**.
+Chép thư mục `Tools/NXT Retro Tube.pak` vào `Tools/` trên thẻ nhớ (chép đè nếu đã có bản cũ). Mở từ Tools.
 
-Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm trong `MUOS/application/NXT Retro Tube/data`.
+Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/shared/nxt-retro-tube`.
+
+## Mới ở 2.1.1
+- **Sửa lỗi xem live chỉ được 240p:** trước đây app đưa cả danh sách chất lượng của luồng trực tiếp cho bộ phát, bộ phát tự chọn mức thấp (thường 240p).
+  Giờ app đọc danh sách đó trước và mở **đúng chất lượng đang chọn** (Tự động = 720p, 60 hình nếu live có; chọn 1080p / 720p / 480p / 360p cũng được áp dụng cho live).
+  Live cũng vào nhanh hơn vì bộ phát chỉ tải một mức chất lượng. Khi nghe nền / tắt màn hình / Chỉ âm thanh, live tự chuyển sang mức nhỏ nhất và không giải mã hình (mát máy, ít dữ liệu).
 
 ## Mới ở 2.1
 - **Hẹn giờ tắt:** trong **Bảng nhanh** hoặc **Tùy chọn video (SELECT) → Hẹn giờ tắt**, bấm A để chọn 15 / 30 / 45 / 60 / 90 phút hoặc **Hết video này**.
@@ -40,29 +40,33 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm t
 - Tua gần như tức thì trong phần đã tải; tua xa nhảy tới khung hình chính gần nhất.
 - Video 60 khung/giây luôn khớp tiếng (hiện tối đa ~30 hình/giây trên máy).
 - Hàng "Tiếp theo" cuộn được, tự tải thêm video gợi ý; tự phát video kế.
-- Nút âm lượng: hệ điều hành chỉnh loa / tai nghe, app hiện mức âm lượng; với DAC USB app tự chỉnh mức riêng.
+- Nút âm lượng cho loa, tai nghe 3.5 mm và DAC USB, có hiện mức âm lượng.
 - Nút nguồn: tắt đen màn hình, vẫn nghe (như YouTube Premium). Bấm nút bất kỳ (trừ âm lượng) để bật lại.
-- Nút Home bên hông (Brick Pro): Bảng nhanh (Tiếp tục · Tắt màn hình · Nghe nền · Thoát). Nút MENU (logo) bấm riêng rồi thả: thoát.
+- Nút Home bên hông: Bảng nhanh (Tiếp tục · Tắt màn hình · Nghe nền · Thoát). Nút logo TrimUI: thoát ngay.
 - Nghe nền (về menu máy, tiếng vẫn phát), Xem sau, Theo dõi kênh, Tải về máy (720p) xem không cần mạng.
-- USB DAC qua PipeWire của hệ thống, ở cả hai cổng USB-C (cổng sạc: bật trong Cài đặt).
+- USB DAC ở cả hai cổng USB-C (cổng sạc: bật trong Cài đặt).
 - Cài đặt: ngôn ngữ, chất lượng mặc định, tự phát tiếp, lấy luồng trước, Telex, bù trễ tiếng–hình, đầu ra âm thanh, cổng sạc cho DAC, kiểu trang chủ, đổi phím, xóa bộ nhớ đệm / lịch sử / lượt tìm, phiên bản, tác giả · ủng hộ, phụ đề (chế độ, ngôn ngữ, cỡ chữ), chế độ trẻ em.
-
 
 ## Phím
 | Màn hình | Phím |
 |---|---|
-| Mọi nơi | MENU (bấm riêng): thoát · MENU + Âm lượng: độ sáng (của hệ thống) · Home bên hông: Bảng nhanh · Nguồn: tắt/bật màn hình · Âm lượng ± |
+| Mọi nơi | Logo TrimUI: thoát · Home bên hông: Bảng nhanh · Nguồn: tắt/bật màn hình · Âm lượng ± |
 | Trang chủ / Thư viện | D-pad chọn · A xem · Y tìm kiếm · X Xem sau · L1/R1 đổi mục con · L2/R2 đổi mục chính · START làm mới · SELECT mở lại video đang phát · B thoát (đang phát thì hỏi Nghe nền / Thoát) |
 | Xem video | A phát/dừng · Trái/Phải tua 10 giây · L2/R2 tua 60 giây · L1/R1 video trước/sau · X chất lượng · START tốc độ · SELECT tùy chọn · Y toàn màn hình · Xuống: hàng Tiếp theo · B về |
 | Hàng Tiếp theo | Trái/Phải chọn (không tua) · L2/R2 nhảy 4 video · A xem · Lên quay lại |
 | Tìm kiếm | A gõ (phím #+= mở ký hiệu, abc về chữ) · B xóa chữ / về · Y dấu cách · X xóa hết · SELECT Telex · START tìm · L1/R1 lượt tìm gần đây · L2/R2 đổi mục chính |
 
+## Icon trong menu Tools
+Launcher NX Redux gán icon cho Tools bằng danh sách cố định trong mã, nên app kèm launcher dựng lại từ đúng mã nguồn NX Redux,
+chỉ thêm hai dòng: "NXT Retro Tube" và "NXT Retro Music" (icon của cả hai app):
+- **NX Redux 2.4.1** (bản mới, kho `nx-redux/nx-handheld`, tag v2.4.1): nhận diện qua `.system/version.txt` = v2.4.1.
+- NX Redux 2.1.2 (bản cũ): nhận diện bằng mã SHA-256 của launcher gốc / launcher NXT Retro Music.
 
-## Khác với bản NextUI / NX Redux
-- Âm thanh đi qua PipeWire của muOS; nút âm lượng do muOS xử lý, app chỉ hiện mức (Bảng nhanh: Trái/Phải chỉnh âm lượng hệ thống).
-- Phím đọc theo mã phím (evdev) của thiết bị ảo `muOS-Keys`, nên đúng phím dù muOS đánh số nút khác TrimUI. Không chiếm phím của hệ thống.
-- MENU là phím tắt hệ thống của muOS: app chỉ coi là "thoát" khi bấm MENU một mình rồi thả.
-- Không cần SDL2_image hay thư viện cài thêm: app chỉ dùng SDL2 có sẵn của muOS.
+App chỉ thay launcher khi đúng một trong hai phiên bản trên, sao lưu launcher cũ vào `integration/backup/`, và cài luôn
+`menu_icon_nxt_tube.png` (cùng `menu_icon_nxt.png` của NXT Retro Music nếu máy chưa có).
+Gỡ: Cài đặt → "Icon trong menu Tools" → bấm A hai lần. Sau lần mở app đầu tiên, khởi động lại máy để thấy icon.
+Khi NX Redux cập nhật lên bản mới hơn 2.4.1, launcher mới của NX Redux sẽ thay launcher này (icon mất, app vẫn chạy bình thường)
+cho tới khi có bản NXT Retro Tube hỗ trợ phiên bản đó.
 
 ## Chế độ trẻ em (phụ huynh quản lý)
 Vào **Cài đặt → Chế độ trẻ em**. Lần đầu bật sẽ yêu cầu đặt **mã PIN phụ huynh 4 số** (nhập 2 lần).
@@ -99,7 +103,7 @@ Xem video nói tiếng nước ngoài, app tự hiện **phụ đề dịch sang
 - **Ngôn ngữ phụ đề:** "Theo app" (Tiếng Việt hoặc English theo ngôn ngữ giao diện), hoặc chọn: Tiếng Việt, English, Español,
   Français, Deutsch, Português, Italiano, Bahasa Indonesia (có sẵn), **Tiếng Hàn, Tiếng Nhật, Tiếng Trung, Tiếng Thái** (cần tải gói chữ).
 - **Tải gói chữ:** chọn ngôn ngữ đó rồi bấm **A** (một lần; Hàn ~10 MB, Nhật ~9 MB, Trung ~17 MB, Thái <1 MB). Phần ghi chú hiện % đang tải.
-  Gói chữ (font Noto Sans của Google, giấy phép SIL OFL) được kiểm tra mã SHA-256 rồi lưu vào `MUOS/application/NXT Retro Tube/data/fonts`. Xóa thư mục đó để gỡ.
+  Gói chữ (font Noto Sans của Google, giấy phép SIL OFL) được kiểm tra mã SHA-256 rồi lưu vào `.userdata/shared/nxt-retro-tube/fonts`. Xóa thư mục đó để gỡ.
 - **Cỡ chữ phụ đề:** Nhỏ / Vừa / Lớn.
 
 **Đổi riêng cho video đang xem:** SELECT (Tùy chọn video) → **Phụ đề**, bấm A để đổi: Theo cài đặt → Bật · dịch (sang ngôn ngữ của bạn)
@@ -119,17 +123,13 @@ video đã tải về máy xem không cần mạng thì không có phụ đề.
 - Cần Wi-Fi và còn trống khoảng 100 MB trên thẻ nhớ khi cập nhật yt-dlp / Deno.
 
 ## Nghe nền
-Đang phát video, bấm B ở trang chủ → "Nghe nền (chỉ tiếng)" (hoặc Home → Nghe nền): app tắt hình, về menu muOS, tiếng vẫn phát và tự chuyển video tiếp.
-Mở lại app để quay về đúng chỗ đang nghe.
-
-## Tắt màn hình vẫn nghe
-Bấm nút nguồn (nhấn nhanh) khi đang ở trong app: màn hình tắt đen, tiếng vẫn phát. Bấm nút bất kỳ (trừ âm lượng) để bật lại.
-Trong lúc app mở, app báo cho muOS không ngủ khi nhấn nhanh nút nguồn (cờ `caffeine`) và tạm dừng tự tối/tự ngủ khi không bấm phím (`idle_game_inhibit`). Thoát app là trả lại như cũ.
-Khi đang Nghe nền ở menu muOS, nút nguồn hoạt động bình thường của muOS (ngủ máy thì tiếng dừng).
+Đang phát video, bấm B ở trang chủ → "Nghe nền (chỉ tiếng)": app tắt hình, về menu, tiếng vẫn phát và tự chuyển video tiếp.
+Mở lại app từ Tools để quay về đúng chỗ đang nghe.
 
 ## Đổi phím
 Cài đặt → Đổi phím: chọn chức năng, bấm A rồi bấm nút muốn gán (hai chức năng sẽ đổi chỗ cho nhau).
-Y = đổi chỗ A/B nhanh, X = về mặc định. D-pad, MENU, Home và nút âm lượng không đổi được.
+Y = đổi chỗ A/B nhanh, X = về mặc định. D-pad và nút logo không đổi được.
+
 
 ## Tác giả & ủng hộ
 NXT Retro Tube do **Nguyễn Xuân Thông** làm. Nếu thấy app hữu ích, bạn có thể ủng hộ tác giả:
@@ -140,6 +140,6 @@ NXT Retro Tube do **Nguyễn Xuân Thông** làm. Nếu thấy app hữu ích, b
 Trong app: Cài đặt → **Tác giả · Ủng hộ**.
 
 ## Khi có lỗi
-Gửi lại `NXT_Tube_Log.txt` (trong thư mục app), `data/cache/nxt-retro-tube-run.txt` và `data/cache/ytdlp-helper-0.txt`.
+Gửi lại `NXT_Tube_Log.txt` (trong thư mục app) và `.userdata/shared/nxt-retro-tube/cache/ytdlp-helper-0.txt`.
 
 Ứng dụng không liên kết với YouTube/Google. Giấy phép: thư mục `licenses`.

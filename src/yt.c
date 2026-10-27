@@ -71,6 +71,7 @@ void StreamInfo_free(StreamInfo *s) {
     free_format(&s->audio); free_format(&s->muxed);
     free(s->hls); free(s->headers);
     for (int i = 0; i < s->ncaps; i++) free(s->caps[i].url);
+    for (int i = 0; i < s->nhls; i++) free(s->hlsv[i].url);
     memset(s, 0, sizeof(*s));
 }
 static char *dup0(const char *s) { return s ? strdup(s) : NULL; }
@@ -80,6 +81,37 @@ static void copy_stream(StreamInfo *dst, const StreamInfo *src) {
     dst->audio.url = dup0(src->audio.url); dst->muxed.url = dup0(src->muxed.url);
     dst->hls = dup0(src->hls); dst->headers = dup0(src->headers);
     for (int i = 0; i < src->ncaps; i++) dst->caps[i].url = dup0(src->caps[i].url);
+    for (int i = 0; i < src->nhls; i++) dst->hlsv[i].url = dup0(src->hlsv[i].url);
+}
+static void hls_add(StreamInfo *s, const char *url, int h, int fps, long bw) {
+    if (!url || h <= 0 || s->nhls >= 10) return;
+    for (int i = 0; i < s->nhls; i++) if (s->hlsv[i].height == h && s->hlsv[i].fps == fps) return;
+    s->hlsv[s->nhls].url = strdup(url); s->hlsv[s->nhls].height = h; s->hlsv[s->nhls].fps = fps; s->hlsv[s->nhls].bw = bw; s->nhls++;
+}
+/* Live: YouTube's master playlist lists 144p..1080p. Opened as is, FFmpeg's HLS demuxer loads
+ * every quality and then picks one by itself (often 240p). Read the list here instead, so the
+ * player opens exactly the quality asked for (and only that one: also faster to start). */
+char *Innertube_get(const char *url, char *err, size_t en);
+static void hls_expand(StreamInfo *s) {
+    if (!s->hls || s->nhls) return;
+    char err[160] = "";
+    char *text = Innertube_get(s->hls, err, sizeof(err));
+    if (!text) { Log_msg("live: master playlist: %s", err); return; }
+    int h = 0, fps = 0; long bw = 0; bool want = false;
+    for (char *line = strtok(text, "\r\n"); line; line = strtok(NULL, "\r\n")) {
+        if (!strncmp(line, "#EXT-X-STREAM-INF:", 18)) {
+            const char *r = strstr(line, "RESOLUTION="), *f = strstr(line, "FRAME-RATE="), *b = strstr(line, "BANDWIDTH=");
+            int w = 0; h = 0; fps = 30; bw = 0;
+            if (r) sscanf(r + 11, "%dx%d", &w, &h);
+            if (f) { double x = 0; sscanf(f + 11, "%lf", &x); fps = (int)(x + 0.5); }
+            if (b) bw = atol(b + 10);
+            want = h > 0;
+        } else if (want && line[0] != '#') {
+            hls_add(s, line, h, fps, bw); want = false;
+        }
+    }
+    free(text);
+    Log_msg("live: %d qualities in the master playlist", s->nhls);
 }
 
 static void scopy(char *dst, size_t n, const char *src) {
@@ -363,6 +395,8 @@ static bool parse_stream_obj(JSON_Object *o, StreamInfo *s) {
         bool hasv = vc && strcmp(vc, "none"), hasa = ac && strcmp(ac, "none");
         int h = (int)json_object_get_number(f, "height");
         if (starts(proto, "m3u8")) {
+            const char *fid = json_object_get_string(f, "format_id");
+            if (hasv && !(fid && !strcmp(fid, "hls"))) hls_add(s, url, h, (int)(json_object_get_number(f, "fps") + 0.5), (long)(json_object_get_number(f, "tbr") * 1000));
             if (hasv && h <= 720 && h > best_hls_height) { free(s->hls); s->hls = strdup(url); best_hls_height = h; header_src = f; }
             continue;
         }
@@ -637,6 +671,7 @@ static void *fast_work(void *arg) {
             if (text) {
                 ok = parse_stream(text, &stream); free(text);
                 ok = ok && stream.audio.url && (stream.nvideo || stream.muxed.url || stream.hls);
+                if (ok && stream.info.live) hls_expand(&stream);
                 if (!ok) { StreamInfo_free(&stream); memset(&stream, 0, sizeof(stream)); snprintf(why, sizeof(why), "incomplete formats"); }
             }
             if (ok) {
