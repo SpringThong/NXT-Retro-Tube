@@ -170,7 +170,7 @@ static struct {
     pthread_t switcher; bool switcher_on; atomic_bool switch_done;
     /* source copy */
     PlayerSource src;
-    char *s_video, *s_audio, *s_muxed, *s_headers, *s_ua, *s_vcodec, *s_lv, *s_la;
+    char *s_video, *s_audio, *s_muxed, *s_fallback, *s_headers, *s_ua, *s_vcodec, *s_lv, *s_la;
 } P;
 
 static SDL_Texture *frame_tex; static int tex_w, tex_h; static bool tex_yuv;
@@ -497,6 +497,36 @@ static AVDictionary *http_opts(void) {
     if (P.s_headers && *P.s_headers) av_dict_set(&o, "headers", P.s_headers, 0);
     return o;
 }
+/* An HLS master holds every quality. Keep only the one asked for (P.src.want_*) plus the sound that
+ * goes with it, before reading any data: FFmpeg then downloads just those playlists (otherwise it
+ * picks a quality by itself, often 240p, and fetches all of them). */
+static void close_demux(Demux *d);
+static void pick_variant(Demux *d) {
+    AVFormatContext *f = d->fmt;
+    int nv = 0, best = -1; long best_key = -1;
+    for (unsigned i = 0; i < f->nb_streams; i++) if (f->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) nv++;
+    if (nv < 2 || P.src.want_height <= 0) return;
+    for (unsigned i = 0; i < f->nb_streams; i++) {
+        AVStream *st = f->streams[i];
+        if (st->codecpar->codec_type != AVMEDIA_TYPE_VIDEO) continue;
+        int h = st->codecpar->height;
+        AVDictionaryEntry *e = av_dict_get(st->metadata, "variant_bitrate", NULL, 0);
+        long bw = e ? atol(e->value) : 0;
+        double fps = av_q2d(st->avg_frame_rate) > 0 ? av_q2d(st->avg_frame_rate) : av_q2d(st->r_frame_rate);
+        long key;
+        if (P.src.want_bw > 0 && bw == P.src.want_bw) key = 1L << 40;                 /* the exact entry of the list */
+        else if (h > 0 && h <= P.src.want_height) key = (long)h * 4 + ((fps > 30) == (P.src.want_fps > 30) ? 2 : 1);
+        else if (h > 0) key = 0;                                                         /* larger than asked: last choice */
+        else key = bw > 0 && bw <= P.src.want_bw ? 1 + bw / 100000 : 0;
+        if (key > best_key || (key == best_key && best >= 0 && h > 0 && h < f->streams[best]->codecpar->height)) { best_key = key; best = (int)i; }
+    }
+    if (best < 0) return;
+    d->vidx = best;
+    d->aidx = av_find_best_stream(f, AVMEDIA_TYPE_AUDIO, -1, best, NULL, 0);
+    for (unsigned i = 0; i < f->nb_streams; i++) if ((int)i != d->vidx && (int)i != d->aidx) f->streams[i]->discard = AVDISCARD_ALL;
+    Log_msg("hls: kept stream %d of %u for %dp (%s), sound stream %d", best, f->nb_streams, P.src.want_height,
+            best_key == 1L << 40 ? "exact" : "closest", d->aidx);
+}
 static int open_demux(Demux *d, const char *url, long long size, bool chunked, bool local) {
     d->vidx = d->aidx = -1;
     d->fmt = avformat_alloc_context();
@@ -519,9 +549,11 @@ static int open_demux(Demux *d, const char *url, long long size, bool chunked, b
     av_dict_free(&o);
     if (r < 0) { Log_msg("open input failed: %s", av_err2str(r)); return r; }
     bool need_info = !chunked;
+    if (!chunked && !local) pick_variant(d);
     if (need_info) { d->fmt->max_analyze_duration = 2 * AV_TIME_BASE; r = avformat_find_stream_info(d->fmt, NULL); if (r < 0) Log_msg("stream info: %s", av_err2str(r)); }
-    d->vidx = av_find_best_stream(d->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
-    d->aidx = av_find_best_stream(d->fmt, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
+    if (d->vidx < 0) d->vidx = av_find_best_stream(d->fmt, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
+    if (d->aidx < 0) d->aidx = av_find_best_stream(d->fmt, AVMEDIA_TYPE_AUDIO, -1, d->vidx >= 0 ? d->vidx : -1, NULL, 0);
+    if (d->aidx < 0) d->aidx = av_find_best_stream(d->fmt, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
     if (d->vidx < 0) d->vidx = -1;
     if (d->aidx < 0) d->aidx = -1;
     for (unsigned i = 0; i < d->fmt->nb_streams; i++) if ((int)i != d->vidx && (int)i != d->aidx) d->fmt->streams[i]->discard = AVDISCARD_ALL;
@@ -557,6 +589,11 @@ static void *opener(void *u) {
         if (r >= 0 && s->local_audio) r = open_demux(&P.dx[1], s->local_audio, 0, false, true);
     } else if (s->muxed_url) {
         r = open_demux(&P.dx[0], s->muxed_url, 0, false, false);
+        if ((r < 0 || (P.dx[0].aidx < 0 && !s->audio_only) || (P.dx[0].aidx < 0 && P.dx[0].vidx < 0)) && s->fallback_url && !atomic_load(&P.quit)) {
+            Log_msg("open: %s, trying the master playlist", r < 0 ? av_err2str(r) : "no sound in this playlist");
+            close_demux(&P.dx[0]);
+            r = open_demux(&P.dx[0], s->fallback_url, 0, false, false);
+        }
     } else {
         /* open video and audio connections at the same time (TLS + moov in parallel) */
         bool want_v = s->video_url && !s->audio_only;
@@ -759,8 +796,8 @@ void Player_close(void) {
     P.fcount = P.fhead = 0;
     P.rcount = P.rr = P.rw = 0; P.scount = P.shead = 0;
     P.state = PS_IDLE;
-    free(P.s_video); free(P.s_audio); free(P.s_muxed); free(P.s_headers); free(P.s_ua); free(P.s_vcodec); free(P.s_lv); free(P.s_la);
-    P.s_video = P.s_audio = P.s_muxed = P.s_headers = P.s_ua = P.s_vcodec = P.s_lv = P.s_la = NULL;
+    free(P.s_video); free(P.s_audio); free(P.s_muxed); free(P.s_fallback); free(P.s_headers); free(P.s_ua); free(P.s_vcodec); free(P.s_lv); free(P.s_la);
+    P.s_video = P.s_audio = P.s_muxed = P.s_fallback = P.s_headers = P.s_ua = P.s_vcodec = P.s_lv = P.s_la = NULL;
     P.opener_started = P.vthread_on = P.athread_on = false;
     pthread_mutex_unlock(&P.lock);
 }
@@ -771,10 +808,10 @@ bool Player_open(const PlayerSource *src) {
     atomic_store(&P.quit, false);
     P.active = true;
     P.src = *src;
-    P.s_video = sdup(src->video_url); P.s_audio = sdup(src->audio_url); P.s_muxed = sdup(src->muxed_url);
+    P.s_video = sdup(src->video_url); P.s_audio = sdup(src->audio_url); P.s_muxed = sdup(src->muxed_url); P.s_fallback = sdup(src->fallback_url);
     P.s_headers = sdup(src->headers); P.s_ua = sdup(src->user_agent); P.s_vcodec = sdup(src->video_codec);
     P.s_lv = sdup(src->local_video); P.s_la = sdup(src->local_audio);
-    P.src.video_url = P.s_video; P.src.audio_url = P.s_audio; P.src.muxed_url = P.s_muxed; P.src.headers = P.s_headers;
+    P.src.video_url = P.s_video; P.src.audio_url = P.s_audio; P.src.muxed_url = P.s_muxed; P.src.fallback_url = P.s_fallback; P.src.headers = P.s_headers;
     P.src.user_agent = P.s_ua; P.src.video_codec = P.s_vcodec; P.src.local_video = P.s_lv; P.src.local_audio = P.s_la;
     q_init(&P.vq); q_init(&P.aq); q_init(&P.vh); q_init(&P.ah);
     P.serial++; P.dserial++; P.snap_pending = false;

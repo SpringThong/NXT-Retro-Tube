@@ -275,15 +275,24 @@ static void start_player(double start, bool keep_position) {
         src.live = s->info.live;
         int vi = pick_video();
         int lv = s->info.live ? pick_live() : -1;
-        if (lv >= 0 && audio_only) {   /* sound only: the smallest quality, video not decoded (cool, little data) */
-            for (int i = 0; i < s->nhls; i++) if (s->hlsv[i].bw < s->hlsv[lv].bw || (s->hlsv[i].bw == s->hlsv[lv].bw && s->hlsv[i].height < s->hlsv[lv].height)) lv = i;
-            src.audio_only = true;
-        }
+        const char *master = s->hls_master ? s->hls_master : s->hls;
         if (lv >= 0) {
-            src.muxed_url = s->hlsv[lv].url; src.video_height = s->hlsv[lv].height; src.video_fps = s->hlsv[lv].fps;
-            Log_msg("live: %dp%s", s->hlsv[lv].height, s->hlsv[lv].fps > 30 ? "60" : "");
+            bool split = s->hlsv[lv].split;
+            if (audio_only) {   /* sound only: the sound playlist, or the smallest quality; video not decoded (cool, little data) */
+                for (int i = 0; i < s->nhls; i++) if (s->hlsv[i].split == split && (s->hlsv[i].bw < s->hlsv[lv].bw || (s->hlsv[i].bw == s->hlsv[lv].bw && s->hlsv[i].height < s->hlsv[lv].height))) lv = i;
+                src.audio_only = true;
+            }
+            src.video_height = s->hlsv[lv].height; src.video_fps = s->hlsv[lv].fps;
+            src.want_height = s->hlsv[lv].height; src.want_fps = s->hlsv[lv].fps; src.want_bw = s->hlsv[lv].bw;
+            if (audio_only && split && s->hlsv[lv].audio) src.muxed_url = s->hlsv[lv].audio;
+            else if (!split) src.muxed_url = s->hlsv[lv].url;    /* picture + sound in one playlist: open just that one */
+            else src.muxed_url = master;                         /* sound kept apart: the master, keeping only this quality */
+            src.fallback_url = src.muxed_url != master ? master : NULL;
+            if (!src.muxed_url) src.muxed_url = s->hlsv[lv].url;
+            Log_msg("live: %dp%s%s%s", s->hlsv[lv].height, s->hlsv[lv].fps > 30 ? "60" : "", split ? " (sound apart)" : "",
+                    src.muxed_url == master ? " via master" : audio_only ? " sound only" : "");
         }
-        else if (s->info.live && s->hls) { src.muxed_url = s->hls; src.video_height = 720; }
+        else if (s->info.live && master) { src.muxed_url = master; src.video_height = 720; src.want_height = 720; src.want_fps = 60; }
         else if (vi >= 0 && s->audio.url) {
             StreamFormat *f = &s->video[vi];
             src.video_url = f->url; src.video_size = f->size; src.video_height = f->height; src.video_fps = f->fps; src.video_codec = f->codec; src.video_kbps = f->tbr;

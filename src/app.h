@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define APP_NAME "NXT Retro Tube"
-#define APP_VERSION "2.1.1"
+#define APP_VERSION "2.1.2"
 #define APP_AUTHOR "Nguyễn Xuân Thông"
 #define DONATE_MOMO "0339838267"
 #define DONATE_BANK "VCB 0581000786219"
@@ -89,7 +89,10 @@ typedef struct {
     StreamFormat audio;       /* audio-only DASH */
     StreamFormat muxed;       /* progressive fallback (itag 18) */
     char *hls;                /* live HLS manifest */
-    struct { int height, fps; long bw; char *url; } hlsv[10];   /* live: one entry per quality (media playlists) */
+    /* live: one entry per quality (media playlists). split = the playlist has no sound of its own
+     * (YouTube may keep the sound in a separate audio playlist: audio = that playlist, if known) */
+    struct { int height, fps; long bw; bool split; char *url, *audio; } hlsv[10];
+    char *hls_master;         /* live: the master playlist (all qualities + sound) */
     int nhls;
     char *headers;            /* "Key: value\r\n" lines */
     char user_agent[300];
@@ -150,6 +153,8 @@ typedef struct {
     const char *muxed_url;   /* progressive file or HLS manifest */
     const char *headers, *user_agent;
     bool live, audio_only;
+    int want_height; double want_fps; long want_bw;   /* HLS master: the quality to keep (others not downloaded) */
+    const char *fallback_url;                          /* tried if muxed_url opens without sound / fails */
     double start;
     const char *local_video, *local_audio;  /* downloaded files */
     double duration_hint;

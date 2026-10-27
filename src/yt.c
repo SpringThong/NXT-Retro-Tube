@@ -71,7 +71,8 @@ void StreamInfo_free(StreamInfo *s) {
     free_format(&s->audio); free_format(&s->muxed);
     free(s->hls); free(s->headers);
     for (int i = 0; i < s->ncaps; i++) free(s->caps[i].url);
-    for (int i = 0; i < s->nhls; i++) free(s->hlsv[i].url);
+    for (int i = 0; i < s->nhls; i++) { free(s->hlsv[i].url); free(s->hlsv[i].audio); }
+    free(s->hls_master);
     memset(s, 0, sizeof(*s));
 }
 static char *dup0(const char *s) { return s ? strdup(s) : NULL; }
@@ -81,12 +82,33 @@ static void copy_stream(StreamInfo *dst, const StreamInfo *src) {
     dst->audio.url = dup0(src->audio.url); dst->muxed.url = dup0(src->muxed.url);
     dst->hls = dup0(src->hls); dst->headers = dup0(src->headers);
     for (int i = 0; i < src->ncaps; i++) dst->caps[i].url = dup0(src->caps[i].url);
-    for (int i = 0; i < src->nhls; i++) dst->hlsv[i].url = dup0(src->hlsv[i].url);
+    for (int i = 0; i < src->nhls; i++) { dst->hlsv[i].url = dup0(src->hlsv[i].url); dst->hlsv[i].audio = dup0(src->hlsv[i].audio); }
+    dst->hls_master = dup0(src->hls_master);
 }
-static void hls_add(StreamInfo *s, const char *url, int h, int fps, long bw) {
+static void hls_add(StreamInfo *s, const char *url, int h, int fps, long bw, bool split, const char *audio) {
     if (!url || h <= 0 || s->nhls >= 10) return;
-    for (int i = 0; i < s->nhls; i++) if (s->hlsv[i].height == h && s->hlsv[i].fps == fps) return;
-    s->hlsv[s->nhls].url = strdup(url); s->hlsv[s->nhls].height = h; s->hlsv[s->nhls].fps = fps; s->hlsv[s->nhls].bw = bw; s->nhls++;
+    for (int i = 0; i < s->nhls; i++) if (s->hlsv[i].height == h && s->hlsv[i].fps == fps) {
+        /* same quality twice (e.g. with and without sound): keep the one that has sound */
+        if (s->hlsv[i].split && !split) { free(s->hlsv[i].url); free(s->hlsv[i].audio); s->hlsv[i].url = strdup(url); s->hlsv[i].audio = NULL; s->hlsv[i].split = false; s->hlsv[i].bw = bw; }
+        return;
+    }
+    s->hlsv[s->nhls].url = strdup(url); s->hlsv[s->nhls].height = h; s->hlsv[s->nhls].fps = fps; s->hlsv[s->nhls].bw = bw;
+    s->hlsv[s->nhls].split = split; s->hlsv[s->nhls].audio = audio && split ? strdup(audio) : NULL; s->nhls++;
+}
+/* value of KEY= in an m3u8 attribute list (quoted or not) */
+static bool m3u8_attr(const char *line, const char *key, char *out, size_t n) {
+    out[0] = 0;
+    size_t kl = strlen(key);
+    for (const char *p = strstr(line, key); p; p = strstr(p + 1, key)) {
+        if (p[kl] != '=' || (p > line && p[-1] != ',' && p[-1] != ':')) continue;
+        p += kl + 1;
+        size_t k = 0;
+        if (*p == '"') { p++; while (*p && *p != '"' && k + 1 < n) out[k++] = *p++; }
+        else while (*p && *p != ',' && k + 1 < n) out[k++] = *p++;
+        out[k] = 0;
+        return true;
+    }
+    return false;
 }
 /* Live: YouTube's master playlist lists 144p..1080p. Opened as is, FFmpeg's HLS demuxer loads
  * every quality and then picks one by itself (often 240p). Read the list here instead, so the
@@ -97,21 +119,40 @@ static void hls_expand(StreamInfo *s) {
     char err[160] = "";
     char *text = Innertube_get(s->hls, err, sizeof(err));
     if (!text) { Log_msg("live: master playlist: %s", err); return; }
-    int h = 0, fps = 0; long bw = 0; bool want = false;
+    /* sound kept apart: #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",URI="..." (the default one of each group) */
+    struct { char group[64], uri[1600]; bool def; } aud[8]; int naud = 0;
+    char *copy = strdup(text);
+    for (char *line = strtok(copy, "\r\n"); line; line = strtok(NULL, "\r\n")) {
+        char type[16], gid[64], uri[1600], def[8];
+        if (strncmp(line, "#EXT-X-MEDIA:", 13) || !m3u8_attr(line, "TYPE", type, sizeof(type)) || strcmp(type, "AUDIO")) continue;
+        if (!m3u8_attr(line, "GROUP-ID", gid, sizeof(gid)) || !m3u8_attr(line, "URI", uri, sizeof(uri)) || strncmp(uri, "http", 4)) continue;
+        bool d = m3u8_attr(line, "DEFAULT", def, sizeof(def)) && !strcmp(def, "YES");
+        int k = -1; for (int i = 0; i < naud; i++) if (!strcmp(aud[i].group, gid)) k = i;
+        if (k < 0 && naud < 8) k = naud++; else if (k < 0 || aud[k].def || !d) continue;
+        snprintf(aud[k].group, sizeof(aud[k].group), "%s", gid); snprintf(aud[k].uri, sizeof(aud[k].uri), "%s", uri); aud[k].def = d;
+    }
+    free(copy);
+    int h = 0, fps = 0; long bw = 0; bool want = false, split = false; const char *audio = NULL; int nsplit = 0;
     for (char *line = strtok(text, "\r\n"); line; line = strtok(NULL, "\r\n")) {
         if (!strncmp(line, "#EXT-X-STREAM-INF:", 18)) {
-            const char *r = strstr(line, "RESOLUTION="), *f = strstr(line, "FRAME-RATE="), *b = strstr(line, "BANDWIDTH=");
-            int w = 0; h = 0; fps = 30; bw = 0;
-            if (r) sscanf(r + 11, "%dx%d", &w, &h);
-            if (f) { double x = 0; sscanf(f + 11, "%lf", &x); fps = (int)(x + 0.5); }
-            if (b) bw = atol(b + 10);
+            char v[200];
+            int w = 0; h = 0; fps = 30; bw = 0; split = false; audio = NULL;
+            if (m3u8_attr(line, "RESOLUTION", v, sizeof(v))) sscanf(v, "%dx%d", &w, &h);
+            if (m3u8_attr(line, "FRAME-RATE", v, sizeof(v))) fps = (int)(atof(v) + 0.5);
+            if (m3u8_attr(line, "BANDWIDTH", v, sizeof(v))) bw = atol(v);
+            if (m3u8_attr(line, "AUDIO", v, sizeof(v)) && v[0]) {
+                split = true;
+                for (int i = 0; i < naud; i++) if (!strcmp(aud[i].group, v)) audio = aud[i].uri;
+            } else if (m3u8_attr(line, "CODECS", v, sizeof(v)) && v[0] && !strstr(v, "mp4a") && !strstr(v, "opus") && !strstr(v, "ac-3") && !strstr(v, "ec-3"))
+                split = true;          /* video only, and no sound group named */
             want = h > 0;
         } else if (want && line[0] != '#') {
-            hls_add(s, line, h, fps, bw); want = false;
+            hls_add(s, line, h, fps, bw, split, audio); want = false; nsplit += split;
         }
     }
     free(text);
-    Log_msg("live: %d qualities in the master playlist", s->nhls);
+    if (!s->hls_master) s->hls_master = strdup(s->hls);
+    Log_msg("live: %d qualities in the master playlist (%d without own sound, %d sound playlists)", s->nhls, nsplit, naud);
 }
 
 static void scopy(char *dst, size_t n, const char *src) {
@@ -396,8 +437,13 @@ static bool parse_stream_obj(JSON_Object *o, StreamInfo *s) {
         int h = (int)json_object_get_number(f, "height");
         if (starts(proto, "m3u8")) {
             const char *fid = json_object_get_string(f, "format_id");
-            if (hasv && !(fid && !strcmp(fid, "hls"))) hls_add(s, url, h, (int)(json_object_get_number(f, "fps") + 0.5), (long)(json_object_get_number(f, "tbr") * 1000));
-            if (hasv && h <= 720 && h > best_hls_height) { free(s->hls); s->hls = strdup(url); best_hls_height = h; header_src = f; }
+            if (hasv && !(fid && !strcmp(fid, "hls"))) {
+                hls_add(s, url, h, (int)(json_object_get_number(f, "fps") + 0.5), (long)(json_object_get_number(f, "tbr") * 1000), !hasa, NULL);
+                const char *mu = json_object_get_string(f, "manifest_url");
+                if (mu && !s->hls_master) s->hls_master = strdup(mu);
+            }
+            if (fid && !strcmp(fid, "hls") && !s->hls_master) s->hls_master = strdup(url);
+            if (hasv && hasa && h <= 720 && h > best_hls_height) { free(s->hls); s->hls = strdup(url); best_hls_height = h; header_src = f; }
             continue;
         }
         if (strcmp(proto, "https")) continue;
@@ -454,7 +500,7 @@ static bool parse_stream_obj(JSON_Object *o, StreamInfo *s) {
         t->asr = json_object_get_boolean(c, "asr") == 1;
         t->translatable = json_object_get_boolean(c, "translatable") != 0;
     }
-    return s->nvideo > 0 || s->muxed.url || s->hls || s->audio.url;
+    return s->nvideo > 0 || s->muxed.url || s->hls || s->hls_master || s->nhls || s->audio.url;
 }
 static bool parse_stream(const char *text, StreamInfo *s) {
     JSON_Value *root = json_parse_string(text);
@@ -670,7 +716,7 @@ static void *fast_work(void *arg) {
             char *text = Innertube_player(copy.arg, why, sizeof(why));
             if (text) {
                 ok = parse_stream(text, &stream); free(text);
-                ok = ok && stream.audio.url && (stream.nvideo || stream.muxed.url || stream.hls);
+                ok = ok && stream.audio.url && (stream.nvideo || stream.muxed.url || stream.hls || stream.nhls);
                 if (ok && stream.info.live) hls_expand(&stream);
                 if (!ok) { StreamInfo_free(&stream); memset(&stream, 0, sizeof(stream)); snprintf(why, sizeof(why), "incomplete formats"); }
             }

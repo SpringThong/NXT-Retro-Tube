@@ -1,11 +1,14 @@
-# NXT Retro Tube 2.1.1 — firmware gốc TrimUI (Stock) — TrimUI Brick / Brick Pro
+# NXT Retro Tube 2.1.2 — NX Redux (TrimUI Brick Pro)
 
 ## Cài đặt
-Chép thư mục `Apps/NXT_Retro_Tube` vào `Apps/` trên thẻ nhớ. Mở từ mục Apps (icon NXT Retro Tube).
+Chép thư mục `Tools/NXT Retro Tube.pak` vào `Tools/` trên thẻ nhớ (chép đè nếu đã có bản cũ). Mở từ Tools.
 
-Trong lúc app hiện trên màn hình, app tạm dừng keymon của firmware (giống NXT Retro Music) để tự xử lý nút nguồn, âm lượng và Home; khi về menu hoặc thoát, keymon chạy lại bình thường. Nút Home bên hông mở bảng nhanh (Task Manager) của firmware nếu có.
+Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/shared/nxt-retro-tube`.
 
-Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/nxt-tube-stock/shared/nxt-retro-tube`.
+## Mới ở 2.1.2
+- **Sửa lỗi 2.1.1 không mở được live** ("Không mở được luồng"): YouTube để **tiếng của live ở một danh sách riêng**, nên mở riêng danh sách hình thì không có tiếng.
+  Giờ app nhận ra kiểu này và mở cả hình lẫn tiếng, vẫn **chỉ tải đúng chất lượng đã chọn** (không còn 240p). Nếu một cách mở bị lỗi, app tự thử lại bằng danh sách đầy đủ.
+  Nghe nền / Chỉ âm thanh với live: chỉ tải phần tiếng.
 
 ## Mới ở 2.1.1
 - **Sửa lỗi xem live chỉ được 240p:** trước đây app đưa cả danh sách chất lượng của luồng trực tiếp cho bộ phát, bộ phát tự chọn mức thấp (thường 240p).
@@ -28,7 +31,7 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm �
 - **Cập nhật OTA ngay trên máy:** Cài đặt → **Cập nhật (OTA)** → A. App tự nhận ra ROM và máy đang dùng để tải đúng bản; chỉ tải phần nào có bản mới.
 - **Video thiếu nhi (made for kids) nhanh hơn nhiều:** bộ giải mã JavaScript chạy thường trú và nhớ trình phát của YouTube, nên chỉ video đầu tiên sau khi YouTube đổi trình phát còn chậm; các video sau mở gần nhanh như video thường. App nhớ cách lấy luồng nào chạy được để thử trước và lấy sẵn video kế tiếp.
 - Nút Home bên hông: một lần bấm chỉ tính một lần (không còn mở rồi tắt ngay). Khi bảng Task Manager / OSD của hệ thống đang mở, app không nhận phím nữa.
-- Stock: độ sáng trong app giữ đúng mức bạn chỉnh ở hệ thống (trước đây bị tối hơn).
+
 ## Tính năng
 - Giao diện kiểu app YouTube trên điện thoại, phong cách retro; tiếng Việt / English.
 - Trang chủ "Dành cho bạn" theo lịch sử tìm kiếm và kênh đã xem; các mục Âm nhạc, Game retro, Chill & Lofi, Hoạt hình, Trực tiếp, Mới tải lên; danh sách không giới hạn.
@@ -57,6 +60,18 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm �
 | Xem video | A phát/dừng · Trái/Phải tua 10 giây · L2/R2 tua 60 giây · L1/R1 video trước/sau · X chất lượng · START tốc độ · SELECT tùy chọn · Y toàn màn hình · Xuống: hàng Tiếp theo · B về |
 | Hàng Tiếp theo | Trái/Phải chọn (không tua) · L2/R2 nhảy 4 video · A xem · Lên quay lại |
 | Tìm kiếm | A gõ (phím #+= mở ký hiệu, abc về chữ) · B xóa chữ / về · Y dấu cách · X xóa hết · SELECT Telex · START tìm · L1/R1 lượt tìm gần đây · L2/R2 đổi mục chính |
+
+## Icon trong menu Tools
+Launcher NX Redux gán icon cho Tools bằng danh sách cố định trong mã, nên app kèm launcher dựng lại từ đúng mã nguồn NX Redux,
+chỉ thêm hai dòng: "NXT Retro Tube" và "NXT Retro Music" (icon của cả hai app):
+- **NX Redux 2.4.1** (bản mới, kho `nx-redux/nx-handheld`, tag v2.4.1): nhận diện qua `.system/version.txt` = v2.4.1.
+- NX Redux 2.1.2 (bản cũ): nhận diện bằng mã SHA-256 của launcher gốc / launcher NXT Retro Music.
+
+App chỉ thay launcher khi đúng một trong hai phiên bản trên, sao lưu launcher cũ vào `integration/backup/`, và cài luôn
+`menu_icon_nxt_tube.png` (cùng `menu_icon_nxt.png` của NXT Retro Music nếu máy chưa có).
+Gỡ: Cài đặt → "Icon trong menu Tools" → bấm A hai lần. Sau lần mở app đầu tiên, khởi động lại máy để thấy icon.
+Khi NX Redux cập nhật lên bản mới hơn 2.4.1, launcher mới của NX Redux sẽ thay launcher này (icon mất, app vẫn chạy bình thường)
+cho tới khi có bản NXT Retro Tube hỗ trợ phiên bản đó.
 
 ## Chế độ trẻ em (phụ huynh quản lý)
 Vào **Cài đặt → Chế độ trẻ em**. Lần đầu bật sẽ yêu cầu đặt **mã PIN phụ huynh 4 số** (nhập 2 lần).
@@ -93,7 +108,7 @@ Xem video nói tiếng nước ngoài, app tự hiện **phụ đề dịch sang
 - **Ngôn ngữ phụ đề:** "Theo app" (Tiếng Việt hoặc English theo ngôn ngữ giao diện), hoặc chọn: Tiếng Việt, English, Español,
   Français, Deutsch, Português, Italiano, Bahasa Indonesia (có sẵn), **Tiếng Hàn, Tiếng Nhật, Tiếng Trung, Tiếng Thái** (cần tải gói chữ).
 - **Tải gói chữ:** chọn ngôn ngữ đó rồi bấm **A** (một lần; Hàn ~10 MB, Nhật ~9 MB, Trung ~17 MB, Thái <1 MB). Phần ghi chú hiện % đang tải.
-  Gói chữ (font Noto Sans của Google, giấy phép SIL OFL) được kiểm tra mã SHA-256 rồi lưu vào `.userdata/nxt-tube-stock/shared/nxt-retro-tube/fonts`. Xóa thư mục đó để gỡ.
+  Gói chữ (font Noto Sans của Google, giấy phép SIL OFL) được kiểm tra mã SHA-256 rồi lưu vào `.userdata/shared/nxt-retro-tube/fonts`. Xóa thư mục đó để gỡ.
 - **Cỡ chữ phụ đề:** Nhỏ / Vừa / Lớn.
 
 **Đổi riêng cho video đang xem:** SELECT (Tùy chọn video) → **Phụ đề**, bấm A để đổi: Theo cài đặt → Bật · dịch (sang ngôn ngữ của bạn)
@@ -130,6 +145,6 @@ NXT Retro Tube do **Nguyễn Xuân Thông** làm. Nếu thấy app hữu ích, b
 Trong app: Cài đặt → **Tác giả · Ủng hộ**.
 
 ## Khi có lỗi
-Gửi lại `NXT_Tube_Log.txt` (trong thư mục app) và `.userdata/nxt-tube-stock/shared/nxt-retro-tube/cache/ytdlp-helper-0.txt`.
+Gửi lại `NXT_Tube_Log.txt` (trong thư mục app) và `.userdata/shared/nxt-retro-tube/cache/ytdlp-helper-0.txt`.
 
 Ứng dụng không liên kết với YouTube/Google. Giấy phép: thư mục `licenses`.
