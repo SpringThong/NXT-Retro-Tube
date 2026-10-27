@@ -1,9 +1,12 @@
-# NXT Retro Tube 2.1.2 — NX Redux (TrimUI Brick Pro)
+# NXT Retro Tube 2.1.3 — NX Redux (TrimUI Brick Pro)
 
 ## Cài đặt
 Chép thư mục `Tools/NXT Retro Tube.pak` vào `Tools/` trên thẻ nhớ (chép đè nếu đã có bản cũ). Mở từ Tools.
 
 Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/shared/nxt-retro-tube`.
+
+## Mới ở 2.1.3
+- Chỉ thay đổi cho Smart Pro S (máy khác giữ nguyên như 2.1.2).
 
 ## Mới ở 2.1.2
 - **Sửa lỗi 2.1.1 không mở được live** ("Không mở được luồng"): YouTube để **tiếng của live ở một danh sách riêng**, nên mở riêng danh sách hình thì không có tiếng.

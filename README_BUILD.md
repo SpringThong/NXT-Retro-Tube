@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.1.2 — mã nguồn
+# NXT Retro Tube 2.1.3 — mã nguồn
 
 **Tác giả:** Nguyễn Xuân Thông
 **Ủng hộ tác giả:** MoMo 0339838267 · Vietcombank (VCB) 0581000786219 · PayPal thongkhung2@gmail.com
@@ -36,6 +36,9 @@ Mã ROM chọn lúc biên dịch: `-DNXT_TUBE_ROM_NXREDUX | NEXTUI | STOCK | MUO
 - Tìm kiếm InnerTube gửi `context.user.enableSafetyMode = true` (Chế độ hạn chế của YouTube) khi bật.
 - Lọc: `Kids_allowed()` áp vào trang chủ, kết quả tìm, trang kênh, hàng "Tiếp theo" và khi mở video; từ khóa so khớp sau khi bỏ dấu tiếng Việt.
 - Giao diện trong `src/main.c`: trang Cài đặt → Chế độ trẻ em (`SC_KIDS`), hộp nhập PIN, màn khóa hết giờ / ngoài giờ, màn nghỉ mắt.
+
+## Mới ở 2.1.3
+- Smart Pro S: `src/scanout.c` — khi SDL của firmware không có driver màn hình (chỉ offscreen), app vẽ bằng renderer CPU vào một surface và tự đưa khung hình lên màn qua KMS dumb buffer + page flip (ioctl trực tiếp, không cần libdrm/gbm) hoặc /dev/fb0; tự xoay nếu màn dọc. QA: `NXT_TUBE_FAKE_FB=tệp:WxH:bpp`.
 
 ## Mới ở 2.1.2
 - Live: master có `#EXT-X-MEDIA:TYPE=AUDIO` (tiếng tách riêng) → mở master và `pick_variant()` (player.c) giữ đúng một luồng hình theo `want_bw`/`want_height` + luồng tiếng cùng chương trình, bỏ các mức khác trước khi đọc dữ liệu. Biến thể có tiếng thì mở thẳng, lỗi/không tiếng thì tự thử master (`fallback_url`).
@@ -110,7 +113,7 @@ Mã ROM chọn lúc biên dịch: `-DNXT_TUBE_ROM_NXREDUX | NEXTUI | STOCK | MUO
 ```sh
 TOOLCHAIN=/path/to/compiler ./build.sh          # cả bảy bản -> build/<rom>/nxt-retro-tube.elf
 ROM=stock TOOLCHAIN=/path/to/compiler ./build.sh # một ROM
-RUNTIME=./runtime ./package.sh                   # dist/NXT_Retro_Tube_v2.1.2_{NXRedux,NextUI,Stock,Stock_SmartProS,muOS,Knulli,dArkOS_R36S}.zip + dist/ota-*.zip
+RUNTIME=./runtime ./package.sh                   # dist/NXT_Retro_Tube_v2.1.3_{NXRedux,NextUI,Stock,Stock_SmartProS,muOS,Knulli,dArkOS_R36S}.zip + dist/ota-*.zip
 ```
 Bảy tệp `.elf` dựng từ mã nguồn này (với `SOURCE_DATE_EPOCH=1793034000`) trùng từng byte với bản phát hành 2.1.
 

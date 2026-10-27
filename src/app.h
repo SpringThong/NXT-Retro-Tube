@@ -7,7 +7,14 @@
 #include <stdint.h>
 
 #define APP_NAME "NXT Retro Tube"
-#define APP_VERSION "2.1.2"
+#define APP_VERSION "2.1.3"
+/* scanout.c: direct panel output (Smart Pro S, when SDL cannot open the panel) */
+bool Scanout_open(int *lw, int *lh);
+SDL_Surface *Scanout_surface(void);
+bool Scanout_active(void);
+void Scanout_present(void);
+void Scanout_close(void);
+void Scanout_diag(void);
 #define APP_AUTHOR "Nguyễn Xuân Thông"
 #define DONATE_MOMO "0339838267"
 #define DONATE_BANK "VCB 0581000786219"

@@ -27,7 +27,7 @@ build_one() {
       -I$TP/include -I$FF/include -I$SYS/usr/include -I$SYS/usr/include/SDL2 \
       $ROOT/src/main.c $ROOT/src/draw.c $ROOT/src/player.c $ROOT/src/yt.c $ROOT/src/thumbs.c \
       $ROOT/src/store.c $ROOT/src/download.c $ROOT/src/session.c $ROOT/src/parson.c $ROOT/src/sonic.c \
-      $ROOT/src/telex.c $ROOT/src/innertube.c $ROOT/src/system.c $ROOT/src/i18n.c $ROOT/src/settings.c $ROOT/src/audio_route.c $ROOT/src/kids.c $ROOT/src/subs.c $ROOT/src/ota.c $EXTRA_SRC \
+      $ROOT/src/telex.c $ROOT/src/innertube.c $ROOT/src/system.c $ROOT/src/i18n.c $ROOT/src/settings.c $ROOT/src/audio_route.c $ROOT/src/kids.c $ROOT/src/subs.c $ROOT/src/ota.c $ROOT/src/scanout.c $EXTRA_SRC \
       -Wl,--gc-sections -L$SYS/usr/lib -Wl,-rpath-link,$SYS/lib:$SYS/usr/lib \
       $FF/lib/libavformat.a $FF/lib/libavcodec.a $FF/lib/libswscale.a $FF/lib/libswresample.a $FF/lib/libavutil.a \
       $TP/lib/libmbedtls.a \

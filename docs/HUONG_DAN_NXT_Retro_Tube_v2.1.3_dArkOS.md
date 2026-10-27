@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.1.2 — dArkOS (R36S và máy RK3326 cùng kiểu)
+# NXT Retro Tube 2.1.3 — dArkOS (R36S và máy RK3326 cùng kiểu)
 
 ## Yêu cầu
 - dArkOS trên R36S (và máy cùng bo mạch RG351MP / RK3326, tay cầm "GO-Super Gamepad"). Cần Wi-Fi (USB Wi-Fi trên R36S).
@@ -15,6 +15,9 @@ Nếu bạn để game ở thẻ thứ hai (`/roms2`) thì chép vào `ports` c�
 **Start → Game settings → Update gamelists** (hoặc khởi động lại). App nằm trong **Ports**.
 
 Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm trong `ports/nxt-retro-tube/data`.
+
+## Mới ở 2.1.3
+- Chỉ thay đổi cho Smart Pro S (máy khác giữ nguyên như 2.1.2).
 
 ## Mới ở 2.1.2
 - **Sửa lỗi 2.1.1 không mở được live** ("Không mở được luồng"): YouTube để **tiếng của live ở một danh sách riêng**, nên mở riêng danh sách hình thì không có tiếng.

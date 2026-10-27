@@ -345,6 +345,8 @@ static void play_index(int i) {
  *   3. GPU through SDL's KMS/DRM     4. CPU drawing (only at the last launch stage)
  * launch.sh runs up to three stages: 0 firmware SDL, 1 system SDL (/usr/lib), 2 firmware SDL
  * plus the CPU fallback; the app exits with code 3 to ask for the next stage. */
+static void sps_sdl_log(void *u, int cat, SDL_LogPriority pr, const char *msg) { (void)u; (void)pr; Log_msg("SDL[%d]: %s", cat, msg); }
+static bool sps_scan;          /* SDL has no panel driver: draw on the CPU, scanout.c shows the frames */
 static int sps_stage(void) { const char *e = getenv("NXT_TUBE_DISPLAY_STAGE"); return e ? atoi(e) : 2; }
 static bool sps_try(const char *what, Uint32 flags, Uint32 rflags) {
     int ww = 1280, wh = 720;
@@ -429,6 +431,15 @@ static bool sps_open_display(void) {
     Log_msg("display: stage %d, SDL %d.%d.%d, driver %s, available %s, LD_LIBRARY_PATH=%s", sps_stage(), v.major, v.minor, v.patch,
             SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "?", drivers, getenv("LD_LIBRARY_PATH") ? getenv("LD_LIBRARY_PATH") : "");
     const char *drv = getenv("SDL_VIDEODRIVER");
+    if (sps_scan) {
+        int w = 1280, h = 720;
+        if (!Scanout_open(&w, &h)) return false;
+        A.win = SDL_CreateWindow(APP_NAME, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h, SDL_WINDOW_HIDDEN);   /* never shown: SDL keeps its events / input */
+        A.ren = SDL_CreateSoftwareRenderer(Scanout_surface());
+        if (!A.ren) { Log_msg("display: CPU renderer: %s", SDL_GetError()); Scanout_close(); return false; }
+        Log_msg("display: CPU drawing straight to the panel, %dx%d", w, h);
+        return true;
+    }
     if (drv && (!strcmp(drv, "dummy") || !strcmp(drv, "offscreen")) && !getenv("NXT_TUBE_DISPLAY_TEST")) return sps_try("QA", 0, SDL_RENDERER_SOFTWARE);   /* QA */
     Uint32 gl = SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP;
     if (sps_try("GPU", gl, SDL_RENDERER_ACCELERATED)) return true;
@@ -505,6 +516,9 @@ static void destroy_display(void) {
     if (A.ren) SDL_DestroyRenderer(A.ren);
     if (A.win) SDL_DestroyWindow(A.win);
     A.ren = NULL; A.win = NULL;
+#ifdef NXT_TUBE_DEV_TG5050
+    Scanout_close();               /* give the panel back (the menu redraws it) */
+#endif
     if (A.joy) SDL_JoystickClose(A.joy);
     A.joy = NULL;
 #ifdef NXT_TUBE_PW
@@ -2593,6 +2607,9 @@ static void draw(void) {
     }
     draw_overlays();
     SDL_RenderPresent(A.ren);
+#ifdef NXT_TUBE_DEV_TG5050
+    Scanout_present();             /* no-op unless the CPU draws straight to the panel */
+#endif
 }
 
 static void setup_paths(void) {
@@ -2678,6 +2695,9 @@ int main(int argc, char **argv) {
         if (!qa || getenv("NXT_TUBE_DISPLAY_TEST")) drm = sps_drm_wait();
         /* never let SDL drop to the invisible offscreen driver because of a race on DRM master */
         setenv("SDL_KMSDRM_REQUIRE_DRM_MASTER", "0", 0);
+        /* SDL's own notes on the video drivers it tries (why KMSDRM is refused, ...) into our log */
+        SDL_LogSetOutputFunction(sps_sdl_log, NULL);
+        SDL_LogSetPriority(SDL_LOG_CATEGORY_VIDEO, SDL_LOG_PRIORITY_DEBUG);
         if (drm == 0 && !getenv("NXT_TUBE_DRM_PARKED")) { Log_msg("display: asking launch.sh to park the program holding the screen"); Session_quit(); return 4; }
         if (!qa && vd && (!strcasecmp(vd, "offscreen") || !vd[0])) unsetenv("SDL_VIDEODRIVER");
     }
@@ -2698,7 +2718,8 @@ int main(int argc, char **argv) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) { Log_msg("SDL_Init: %s", SDL_GetError()); Session_quit(); return 1; }
 #endif
 #ifdef NXT_TUBE_DEV_TG5050
-    {   /* SDL picked the invisible offscreen driver: insist on the real panel */
+    if (getenv("NXT_TUBE_FAKE_FB")) sps_scan = true;   /* QA: scanout into a file */
+    else {   /* SDL picked the invisible offscreen driver: insist on the real panel */
         const char *cur = SDL_GetCurrentVideoDriver(), *vd = getenv("SDL_VIDEODRIVER");
         bool qa = vd && (!strcmp(vd, "dummy") || !strcmp(vd, "offscreen")) && !getenv("NXT_TUBE_DISPLAY_TEST");
         if (!qa && cur && (!strcasecmp(cur, "offscreen") || !strcasecmp(cur, "dummy"))) {
@@ -2706,8 +2727,12 @@ int main(int argc, char **argv) {
             SDL_QuitSubSystem(SDL_INIT_VIDEO); setenv("SDL_VIDEODRIVER", "KMSDRM", 1);
             if (SDL_InitSubSystem(SDL_INIT_VIDEO)) {
                 Log_msg("display: KMSDRM: %s", SDL_GetError());
-                Session_quit(); SDL_Quit();
-                return drm == 0 && !getenv("NXT_TUBE_DRM_PARKED") ? 4 : 3;
+                Scanout_diag();
+                if (drm == 0 && !getenv("NXT_TUBE_DRM_PARKED")) { Session_quit(); SDL_Quit(); return 4; }
+                /* SDL has no way to the panel here: draw on the CPU and put frames on it ourselves */
+                setenv("SDL_VIDEODRIVER", "offscreen", 1); setenv("SDL_FRAMEBUFFER_ACCELERATION", "0", 1);
+                if (SDL_InitSubSystem(SDL_INIT_VIDEO)) { Log_msg("display: offscreen: %s", SDL_GetError()); Session_quit(); SDL_Quit(); return 3; }
+                sps_scan = true;
             }
         }
     }
