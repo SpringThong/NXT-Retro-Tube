@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.1.3 — dArkOS (R36S và máy RK3326 cùng kiểu)
+# NXT Retro Tube 2.2 — dArkOS (R36S và máy RK3326 cùng kiểu)
 
 ## Yêu cầu
 - dArkOS trên R36S (và máy cùng bo mạch RG351MP / RK3326, tay cầm "GO-Super Gamepad"). Cần Wi-Fi (USB Wi-Fi trên R36S).
@@ -15,6 +15,14 @@ Nếu bạn để game ở thẻ thứ hai (`/roms2`) thì chép vào `ports` c�
 **Start → Game settings → Update gamelists** (hoặc khởi động lại). App nằm trong **Ports**.
 
 Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm trong `ports/nxt-retro-tube/data`.
+
+## Mới ở 2.2
+- **Thanh trạng thái** ở góc trên (Trang chủ, Kênh / Thư viện, Cài đặt, Chế độ trẻ em, và khi xem toàn màn hình lúc hiện thanh điều khiển):
+  **giờ**, **% pin** với biểu tượng pin (xanh lá khi đang cắm sạc, có tia sét; vàng khi còn ≤ 30%, đỏ khi ≤ 15%),
+  **Wi-Fi** (số vạch theo độ mạnh sóng), **Bluetooth** khi có thiết bị đang kết nối, và **DAC** khi cắm DAC USB. Mục nào không có kết nối thì ẩn.
+  Máy chưa chỉnh giờ (đồng hồ chưa đặt) thì không hiện giờ.
+- **Tab Bóng đá** mới ở Trang chủ (highlights bóng đá). Hàng tab giờ **tự cuộn** theo tab đang chọn, nên các tab sau "Trực tiếp" (Bóng đá, Mới tải lên) hiện đầy đủ tên;
+  có mũi tên mờ ở mép cho biết còn tab phía trước / sau. Chế độ trẻ em có thêm tab "Vận động cho bé".
 
 ## Mới ở 2.1.3
 - Chỉ thay đổi cho Smart Pro S (máy khác giữ nguyên như 2.1.2).

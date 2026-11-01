@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <stdarg.h>
+#include <time.h>
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -44,13 +45,13 @@ static Uint32 repeat_at[K_COUNT];
 /* ---------- state ---------- */
 typedef enum { SC_HOME, SC_SEARCH, SC_WATCH, SC_FULL, SC_LIBRARY, SC_SETTINGS, SC_KIDS } Screen;
 typedef enum { PANEL_NONE, PANEL_QUALITY, PANEL_SPEED, PANEL_OPTIONS } Panel;
-#define CHIPS 7
-static const char *CHIP_LABEL[CHIPS] = {"Dành cho bạn", "Âm nhạc", "Game retro", "Chill & Lofi", "Hoạt hình", "Trực tiếp", "Mới tải lên"};
-static const char *CHIP_QUERY[CHIPS] = {"video thịnh hành việt nam", "nhạc việt mới nhất", "retro game handheld", "lofi chill", "phim hoạt hình", "radio 24/7 live", "việt nam"};
-static const bool CHIP_NEWEST[CHIPS] = {false, false, false, false, false, false, true};
+#define CHIPS 8
+static const char *CHIP_LABEL[CHIPS] = {"Dành cho bạn", "Âm nhạc", "Game retro", "Chill & Lofi", "Hoạt hình", "Trực tiếp", "Bóng đá", "Mới tải lên"};
+static const char *CHIP_QUERY[CHIPS] = {"video thịnh hành việt nam", "nhạc việt mới nhất", "retro game handheld", "lofi chill", "phim hoạt hình", "radio 24/7 live", "bóng đá highlights", "việt nam"};
+static const bool CHIP_NEWEST[CHIPS] = {false, false, false, false, false, false, false, true};
 /* kids mode home: tab 0 and the last tab follow the approved channels when there are some */
-static const char *KIDS_LABEL[CHIPS] = {"Cho bé", "Hoạt hình", "Nhạc thiếu nhi", "Học tiếng Anh", "Truyện cổ tích", "Khoa học vui", "Kênh đã duyệt"};
-static const char *KIDS_QUERY[CHIPS] = {"phim hoạt hình cho bé", "phim hoạt hình thiếu nhi", "nhạc thiếu nhi vui nhộn", "học tiếng anh cho bé", "truyện cổ tích việt nam", "khoa học vui cho bé", "phim hoạt hình cho bé"};
+static const char *KIDS_LABEL[CHIPS] = {"Cho bé", "Hoạt hình", "Nhạc thiếu nhi", "Học tiếng Anh", "Truyện cổ tích", "Khoa học vui", "Vận động cho bé", "Kênh đã duyệt"};
+static const char *KIDS_QUERY[CHIPS] = {"phim hoạt hình cho bé", "phim hoạt hình thiếu nhi", "nhạc thiếu nhi vui nhộn", "học tiếng anh cho bé", "truyện cổ tích việt nam", "khoa học vui cho bé", "bé tập thể dục vận động", "phim hoạt hình cho bé"};
 static const char *const *chip_labels(void) { return K.enabled ? KIDS_LABEL : CHIP_LABEL; }
 static bool chip_newest(int t) { return K.enabled ? false : CHIP_NEWEST[t]; }
 static const char *QUALITY_ID[] = {"auto", "1080", "720p60", "720", "480", "360", "audio"};
@@ -95,7 +96,7 @@ static struct {
     Feed feed[CHIPS];
     /* search */
     int subOverride;          /* this video only: 0 settings, 1 translate, 2 original, 3 off */
-    Uint32 osdAskAt, osdGateUntil; bool osdAsk; bool restart; int otaToldState;
+    Uint32 osdAskAt, osdGateUntil, homeUpAt; bool osdAsk, osdAskOpen; bool restart; int otaToldState;
     int sleepMode; Uint32 sleepAt; bool sleepFading;   /* sleep timer */   /* firmware OSD (TrimUI Task Manager) */
     char raw[96], query[300]; bool telexOff, rawLiteral; int keySel; bool results; int resultSel; float rscroll;
     int searchFocus, recentSel;
@@ -1084,7 +1085,12 @@ static void osd_request(void) {
 /* true while the firmware panel owns the buttons */
 static bool osd_gate(void) {
     Uint32 now = SDL_GetTicks();
-    if (A.osdAsk && (Sint32)(now - A.osdAskAt) >= 0) A.osdAsk = false;   /* keymon did not open it after all */
+    if (A.osdAsk && (Sint32)(now - A.osdAskAt) >= 0) {
+        A.osdAsk = false;
+        /* the firmware did not open its panel by itself: ask for it now (only once per press) */
+        if (A.osdAskOpen && !osd_shown()) osd_request();
+        A.osdAskOpen = false;
+    }
     if (osd_shown()) { A.osdGateUntil = now + 250; return true; }
     return A.osdAsk || (Sint32)(now - A.osdGateUntil) < 0;
 }
@@ -1106,17 +1112,26 @@ static void handle_key(Key k) {
     if (A.pinFor) { pin_key(k); return; }
 
     if (k == K_HOME) {
-        /* one press can arrive twice (pad button + keyboard key): count it once */
+        /* one press can reach us twice (pad button + keyboard key, or a key the firmware
+         * sends again on release): count it once. A new press needs 700 ms since the last
+         * one and 350 ms since the button was let go. */
         static Uint32 last_home;
         Uint32 t = SDL_GetTicks();
-        if (t - last_home < 450) return;
+        if (t - last_home < 700 || (A.homeUpAt && t - A.homeUpAt < 350)) return;
         last_home = t;
         /* firmware with its own panel (Stock Task Manager, NX Redux OSD): let it show that.
-         * NX Redux's keymon opens it by itself; on Stock we paused keymon, so we ask for it */
+         * Its key daemon may open the panel by itself (NX Redux): then asking for it too would
+         * open and close it at once. So wait a moment and ask only if it did not appear.
+         * On Stock we paused keymon: nobody else opens it, ask right away. */
         if (osd_present()) {
-            if (osd_shown()) return;
-            if (Sys_keymonActive()) { A.osdAsk = true; A.osdAskAt = t + 1500; }   /* keymon opens it: just wait for it */
-            else osd_request();
+            if (osd_shown() || A.osdAsk) return;
+            bool keymon = Sys_keymonActive();
+#ifdef NXT_TUBE_ROM_STOCK
+            if (!keymon) { osd_request(); return; }
+#endif
+            /* keymon running: it opens the panel itself, just wait for it. Otherwise give
+             * whatever daemon handles Home a moment, and ask only if nothing appeared. */
+            A.osdAsk = true; A.osdAskOpen = !keymon; A.osdAskAt = t + (keymon ? 1500 : 900);
             return;
         }
         A.quick = !A.quick; A.quickSel = 0; return;
@@ -1407,24 +1422,92 @@ static void draw_grid(const VideoList *l, int sel, bool focus, float *scroll, in
     SDL_RenderSetClipRect(A.ren, NULL);
 }
 static void draw_chips(const char *const *labels, int n, int active, bool focused, int y) {
-    int x = 24;
+    /* the row scrolls so the chosen chip (and a bit of its neighbour) is always in view */
+    int xs[16], ws[16], total = 24;
+    if (n > 16) n = 16;
+    for (int i = 0; i < n; i++) { ws[i] = D_textW(F_SEMI, 21, T(labels[i])) + 36; xs[i] = total; total += ws[i] + 12; }
+    static float off; static int last_n = -1;
+    int want = 0, view = SCREEN_W - 24;
+    if (active >= 0 && active < n) {
+        int right = xs[active] + ws[active] + (active + 1 < n ? 48 : 0), left = xs[active] - (active > 0 ? 48 : 0) - 24;
+        want = (int)off;
+        if (right - want > view) want = right - view;
+        if (left < want) want = left;
+        if (want > total - 12 - view) want = total - 12 - view;
+        if (want < 0) want = 0;
+    }
+    if (last_n != n) { off = (float)want; last_n = n; }
+    off += (want - off) * 0.35f; if (fabsf(want - off) < 1) off = (float)want;
+    SDL_RenderSetClipRect(A.ren, &(SDL_Rect){0, y - 10, SCREEN_W, 64});
     for (int i = 0; i < n; i++) {
         const char *lab = T(labels[i]);
-        int w = D_textW(F_SEMI, 21, lab) + 36;
+        int w = ws[i], x = xs[i] - (int)off;
         bool on = i == active;
-        if (x + w > SCREEN_W) break;
+        if (x + w < 0 || x > SCREEN_W) continue;
         D_round(x, y, w, 44, 10, on ? C_INK : C_SURFACE);
         if (!on) D_roundRing(x, y, w, 44, 10, 2, C_LINE);
         if (on && focused) D_roundRing(x - 7, y - 7, w + 14, 58, 14, 4, C_MUSTARD);
         D_text(F_SEMI, 21, lab, x + w / 2, y + 22 - D_fontHeight(F_SEMI, 21) / 2, on ? C_DARK : C_INK, 0, AL_CENTER);
-        x += w + 12;
     }
+    SDL_RenderSetClipRect(A.ren, NULL);
+    /* more chips beyond the edge: a soft fade with an arrow */
+    if (off > 1) { for (int k = 0; k < 28; k++) D_rect(k, y - 4, 1, 52, RGBA(0x16, 0x14, 0x1C, (Uint8)(255 - k * 9))); D_tri(14, y + 14, 14, y + 30, 6, y + 22, C_MUTED); }
+    if (total - 12 - (int)off > view + 2) { for (int k = 0; k < 28; k++) D_rect(SCREEN_W - 1 - k, y - 4, 1, 52, RGBA(0x16, 0x14, 0x1C, (Uint8)(255 - k * 9))); D_tri(SCREEN_W - 14, y + 14, SCREEN_W - 14, y + 30, SCREEN_W - 6, y + 22, C_MUTED); }
 }
 static void draw_empty(const char *title, const char *note, bool loading) {
     int cy = 146 + grid_vh() / 2;
     if (loading) D_spinner(SCREEN_W / 2, cy - 40, 30, C_MUSTARD);
     D_text(F_BOLD, 24, title, SCREEN_W / 2, cy + 6, C_INK, 900, AL_CENTER);
     if (note && *note) D_text(F_REG, 19, note, SCREEN_W / 2, cy + 44, C_MUTED, 900, AL_CENTER);
+}
+/* ---------- status in the header: clock, battery, Wi-Fi, Bluetooth, USB DAC ---------- */
+static int status_min = 300;       /* the screen's title ends here: the status stays right of it */
+static void draw_battery(int x, int cy, const SysStatus *st) {
+    /* body 36x20 with a nub; fill by level (green while charging, red when low) */
+    int bw = 36, bh = 20, y = cy - bh / 2;
+    SDL_Color edge = C_MUTED;
+    D_round(x, y, bw, bh, 5, edge); D_round(x + 2, y + 2, bw - 4, bh - 4, 3, C_BG);
+    D_round(x + bw, cy - 4, 4, 8, 2, edge);
+    int pct = st->battery < 0 ? 0 : st->battery;
+    SDL_Color fill = st->plugged ? RGBA(0x6B, 0xCB, 0x77, 255) : pct <= 15 ? C_TOMATO : pct <= 30 ? C_MUSTARD : C_INK;
+    int fw = (bw - 8) * pct / 100; if (pct > 0 && fw < 3) fw = 3;
+    if (fw > 0) D_round(x + 4, y + 4, fw, bh - 8, 2, fill);
+    if (st->plugged) D_icon("zap", x + bw / 2 - 9, cy - 9, 18, st->charging || pct < 60 ? C_DARK : C_DARK);
+}
+static int draw_status(int right, int min_left, int cy) {
+    SysStatus st; Sys_status(&st);
+    char clock[8] = "";
+    time_t now = time(NULL); struct tm tmv;
+    if (now > 1600000000 && localtime_r(&now, &tmv)) strftime(clock, sizeof(clock), "%H:%M", &tmv);   /* no clock set: hide it */
+    char pct[8] = ""; if (st.battery >= 0) snprintf(pct, sizeof(pct), "%d%%", st.battery);
+    /* items by priority: battery, clock, Wi-Fi, Bluetooth, DAC; drop the last ones if space is short */
+    int wbat = st.battery >= 0 ? D_textW(F_SEMI, 19, pct) + 6 + 40 : 0;
+    int wclk = clock[0] ? D_textW(F_SEMI, 20, clock) : 0;
+    int wwifi = st.wifi ? 26 : 0, wbt = st.bt ? 22 : 0, wdac = (A.usbCard >= 0 || (getenv("NXT_TUBE_FAKE_STATUS") && strchr(getenv("NXT_TUBE_FAKE_STATUS"), 'd'))) ? D_textW(F_BOLD, 14, "DAC") + 14 : 0;
+    int w[5] = {wbat, wclk, wwifi, wbt, wdac}, gap = 14, room = right - min_left, used = 0;
+    bool on[5] = {0};
+    for (int i = 0; i < 5; i++) if (w[i] && used + w[i] + (used ? gap : 0) <= room) { on[i] = true; used += w[i] + (used ? gap : 0); }
+    int x = right;
+    /* right to left: clock, battery, Wi-Fi, Bluetooth, DAC */
+    if (on[1]) { x -= wclk; D_text(F_SEMI, 20, clock, x, cy - D_fontHeight(F_SEMI, 20) / 2, C_INK, 0, AL_LEFT); x -= gap; }
+    if (on[0]) {
+        x -= 40; draw_battery(x, cy, &st);
+        int tw = D_textW(F_SEMI, 19, pct); x -= 6 + tw;
+        D_text(F_SEMI, 19, pct, x, cy - D_fontHeight(F_SEMI, 19) / 2, st.battery <= 15 && !st.plugged ? C_TOMATO : C_MUTED, 0, AL_LEFT);
+        x -= gap;
+    }
+    if (on[2]) {
+        x -= 26; D_icon("wifi", x, cy - 13, 26, C_LINE);
+        if (st.wifi < 3) D_icon(st.wifi == 2 ? "wifi-2" : "wifi-1", x, cy - 13, 26, C_MUTED); else D_icon("wifi", x, cy - 13, 26, C_MUTED);
+        x -= gap;
+    }
+    if (on[3]) { x -= 22; D_icon("bluetooth", x - 2, cy - 13, 26, RGBA(0x6C, 0xA8, 0xFF, 255)); x -= gap; }
+    if (on[4]) {
+        x -= wdac; D_round(x, cy - 12, wdac, 24, 6, C_MUSTARD);
+        D_text(F_BOLD, 14, "DAC", x + wdac / 2, cy - D_fontHeight(F_BOLD, 14) / 2, C_DARK, 0, AL_CENTER);
+        x -= gap;
+    }
+    return x;
 }
 static int header_hints(int right, const char *const *keys, const char *const *texts, int n) {
     int x = right;
@@ -1433,12 +1516,21 @@ static int header_hints(int right, const char *const *keys, const char *const *t
         x -= kw + 8 + D_textW(F_MED, 18, texts[i]) + 18;
         D_hint(x, 24, keys[i], texts[i]);
     }
+    draw_status(x - 22, status_min, 38);
+    status_min = 300;
     return x;
 }
 static void draw_home(void) {
     D_rect(0, 0, SCREEN_W, SCREEN_H, C_BG);
     draw_logo(24, 20);
     const char *k[2] = {KN(K_B), KN(K_Y)}, *t[2] = {"Thoát", "Tìm kiếm"};
+    status_min = 292;
+    if (K.enabled) {
+        char b[96], m[32];
+        if (K.daily_min) { fmt_minutes(Kids_leftToday(), m, sizeof(m)); snprintf(b, sizeof(b), T("Trẻ em · còn %s"), m); }
+        else snprintf(b, sizeof(b), "%s", T("Chế độ trẻ em"));
+        status_min = 292 + D_textW(F_BOLD, 17, b) + 24 + 16;
+    }
     header_hints(1000 - 46 - 4, k, t, 2);
     D_circle(977, 38, 23, C_BLACK); D_circle(977, 38, 21, C_MUSTARD); D_text(F_XBOLD, 18, "NX", 977, 38 - D_fontHeight(F_XBOLD, 18) / 2, C_DARK, 0, AL_CENTER);
     draw_stripes(76);
@@ -1447,7 +1539,7 @@ static void draw_home(void) {
         if (K.daily_min) { fmt_minutes(Kids_leftToday(), m, sizeof(m)); snprintf(b, sizeof(b), T("Trẻ em · còn %s"), m); }
         else snprintf(b, sizeof(b), "%s", T("Chế độ trẻ em"));
         int bw = D_textW(F_BOLD, 17, b) + 24;
-        D_round(392, 24, bw, 32, 16, C_MUSTARD); D_text(F_BOLD, 17, b, 392 + bw / 2, 30, C_DARK, 0, AL_CENTER);
+        D_round(292, 24, bw, 32, 16, C_MUSTARD); D_text(F_BOLD, 17, b, 292 + bw / 2, 30, C_DARK, 0, AL_CENTER);
     }
     draw_chips(chip_labels(), CHIPS, A.tab, A.focus == 1, 92);
     Feed *f = &A.feed[A.tab];
@@ -1468,6 +1560,7 @@ static void draw_library(void) {
     if (Download_busy()) D_text(F_MED, 17, Download_status(), 230, 28, C_MUSTARD, 420, AL_LEFT);
     char l1r1[16]; snprintf(l1r1, sizeof(l1r1), "%s %s", KN(K_L1), KN(K_R1));
     const char *k[2] = {KN(K_B), l1r1}, *t[2] = {"Về", "Đổi mục"};
+    status_min = Download_busy() ? 660 : 24 + D_textW(F_XBOLD, 34, T(A.libTab == 2 ? "Kênh" : "Thư viện")) + 30;
     header_hints(1000, k, t, 2);
     draw_stripes(76);
     const char *tabs[4] = {"Lịch sử", "Xem sau", "Kênh theo dõi", "Đã tải"};
@@ -1614,7 +1707,7 @@ static void setting_text(int row, char *label, size_t ln, char *value, size_t vn
             snprintf(note, nn, "%s · %s", r == 1 ? T("Cổng dưới đang ở chế độ DAC") : r == 2 ? T("Cổng dưới đang ở chế độ sạc") : T("Không đọc được trạng thái cổng"), T("không sạc được khi bật")); break; }
         case SET_HOME: snprintf(label, ln, "%s", T("Trang chủ gợi ý")); snprintf(value, vn, "%s", S.home_mode ? T("Thịnh hành") : T("Theo lịch sử")); snprintf(note, nn, "%s", T("Gợi ý từ từ khóa đã tìm và kênh đã xem")); break;
         case SET_KEYS: snprintf(label, ln, "%s", T("Đổi phím")); snprintf(value, vn, "%s", "A"); snprintf(note, nn, "%s", T("Gán lại A, B, X, Y, L1, R1, L2, R2, START, SELECT")); break;
-        case SET_ICON: snprintf(label, ln, "%s", T("Icon trong menu Tools")); snprintf(value, vn, "%s", A.iconState == 1 ? T("Đã cài") : A.iconState == 0 ? T("Chưa cài") : T("Không hỗ trợ")); snprintf(note, nn, "%s", A.iconStatus[0] ? A.iconStatus : T("NX Redux: thêm icon cho NXT Retro Tube vào launcher")); break;
+        case SET_ICON: snprintf(label, ln, "%s", T("Icon trong menu Tools")); snprintf(value, vn, "%s", A.iconState == 1 ? T("Đã cài") : A.iconState == 0 ? T("Chưa cài") : T("Không hỗ trợ")); snprintf(note, nn, "%s", A.iconStatus[0] ? A.iconStatus : T("NX Redux (mọi phiên bản): thêm icon NXT Retro Tube vào menu Tools · tự sửa lại sau khi cập nhật hệ điều hành")); break;
         case SET_CACHE: snprintf(label, ln, "%s", T("Xóa bộ nhớ đệm")); snprintf(value, vn, "%s", "A"); snprintf(note, nn, "%s", T("Ảnh thu nhỏ và danh sách đã lưu")); break;
         case SET_HISTORY: snprintf(label, ln, "%s", T("Xóa lịch sử xem")); snprintf(value, vn, "%s", "A"); snprintf(note, nn, "%s", T("Bấm A hai lần để xác nhận")); break;
         case SET_SEARCHES: snprintf(label, ln, "%s", T("Xóa lịch sử tìm kiếm")); snprintf(value, vn, "%s", "A"); snprintf(note, nn, "%s", T("Bấm A hai lần để xác nhận")); break;
@@ -1652,6 +1745,7 @@ static void draw_settings(void) {
     D_rect(0, 0, SCREEN_W, SCREEN_H, C_BG);
     D_text(F_XBOLD, 34, A.keyPage ? "Đổi phím" : "Cài đặt", 24, 16, C_INK, 0, AL_LEFT);
     const char *k[2] = {KN(K_B), KN(K_A)}, *t[2] = {"Về", A.keyPage ? "Gán phím" : "Chọn"};
+    status_min = 24 + D_textW(F_XBOLD, 34, T(A.keyPage ? "Đổi phím" : "Cài đặt")) + 30;
     header_hints(1000, k, t, 2);
     draw_stripes(76);
     if (A.keyPage) {
@@ -1911,11 +2005,14 @@ static void draw_full(void) {
     draw_player_overlays(a, &st, true);
     draw_subs(&st, 512, osd ? 668 : 656, 900, true);
     if (osd) {
-        D_text(F_BOLD, 25, A.cur.title, 24, 16, C_INK, 700, AL_LEFT);
+        const char *qb = quality_badge(); int qw = D_textW(F_XBOLD, 17, qb) + 20, sw = D_textW(F_BOLD, 17, SPEED_LABEL[A.speedIx]) + 20;
+        /* clock / battery / Wi-Fi left of the badges; the title gets what is left (at least 420 px) */
+        int sl = draw_status(1000 - sw - 10 - qw - 22, 24 + 420 + 20, 47);
+        int tmax = sl - 24 - 16; if (tmax > 700) tmax = 700;
+        D_text(F_BOLD, 25, A.cur.title, 24, 16, C_INK, tmax, AL_LEFT);
         char views[64], meta[200]; fmt_views(A.cur.views, A.cur.live, views, sizeof(views));
         snprintf(meta, sizeof(meta), "%s%s%s", A.cur.channel, *views ? " · " : "", views);
-        D_text(F_REG, 18, meta, 24, 54, C_MUTED, 700, AL_LEFT);
-        const char *qb = quality_badge(); int qw = D_textW(F_XBOLD, 17, qb) + 20, sw = D_textW(F_BOLD, 17, SPEED_LABEL[A.speedIx]) + 20;
+        D_text(F_REG, 18, meta, 24, 54, C_MUTED, tmax, AL_LEFT);
         D_round(1000 - sw, 32, sw, 30, 4, RGBA(244, 239, 230, 40)); D_text(F_BOLD, 17, SPEED_LABEL[A.speedIx], 1000 - sw / 2, 35, C_INK, 0, AL_CENTER);
         D_round(1000 - sw - 10 - qw, 32, qw, 30, 4, C_MUSTARD); D_text(F_XBOLD, 17, qb, 1000 - sw - 10 - qw / 2, 35, C_DARK, 0, AL_CENTER);
         if (st.state == PS_PLAYING && !A.panel) { D_circle(512, 384, 48, RGBA(8, 7, 12, 130)); D_ring(512, 384, 48, 3, C_INK); D_round(496, 364, 10, 40, 3, C_INK); D_round(518, 364, 10, 40, 3, C_INK); }
@@ -2185,6 +2282,7 @@ static void draw_kids(void) {
     D_rect(0, 0, SCREEN_W, SCREEN_H, C_BG);
     const char *titles[5] = {"Chế độ trẻ em", "Kênh đã duyệt", "Chọn kênh để duyệt", "Từ khóa cấm", "Báo cáo xem của bé"};
     D_text(F_XBOLD, 34, titles[A.kidsPage], 24, 16, C_INK, 0, AL_LEFT);
+    status_min = 24 + D_textW(F_XBOLD, 34, T(titles[A.kidsPage])) + 30;
     draw_stripes(76);
     if (A.kidsPage == 0) {
         const char *k[2] = {KN(K_B), KN(K_A)}, *t[2] = {"Về", "Chọn"};
@@ -2374,7 +2472,7 @@ static Key map_key(SDL_Keycode k) {
 }
 static Uint32 last_input;
 static void press(Key k) { if (k == K_NONE) return; last_input = SDL_GetTicks(); if (!held[k]) { held[k] = true; repeat_at[k] = SDL_GetTicks() + 320; handle_key(k); } }
-static void release(Key k) { if (k != K_NONE) held[k] = false; }
+static void release(Key k) { if (k != K_NONE) { if (k == K_HOME && held[k]) A.homeUpAt = SDL_GetTicks(); held[k] = false; } }
 static bool trig_down[2];
 static void phys_press(int phys) {
     if (A.capture >= 0 && A.screen == SC_SETTINGS && A.keyPage) { if (phys != 8 && phys != 15 && phys != 13 && phys != 14) capture_assign(phys); return; }

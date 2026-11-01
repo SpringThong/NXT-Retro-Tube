@@ -341,7 +341,8 @@ bool Sys_keymonActive(void) {
         if (*end || n <= 1) continue;
         char p[64], name[32] = "", line[128]; snprintf(p, sizeof(p), "/proc/%ld/comm", n);
         FILE *f = fopen(p, "r"); if (!f) continue;
-        bool km = fgets(name, sizeof(name), f) && !strcmp(name, "keymon\n"); fclose(f);
+        /* TrimUI "keymon", NextUI / NX Redux "keymon.elf" */
+        bool km = fgets(name, sizeof(name), f) && (!strcmp(name, "keymon\n") || !strcmp(name, "keymon.elf\n")); fclose(f);
         if (!km) continue;
         snprintf(p, sizeof(p), "/proc/%ld/status", n);
         f = fopen(p, "r"); if (!f) continue;

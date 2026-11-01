@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define APP_NAME "NXT Retro Tube"
-#define APP_VERSION "2.1.3"
+#define APP_VERSION "2.2"
 /* scanout.c: direct panel output (Smart Pro S, when SDL cannot open the panel) */
 bool Scanout_open(int *lw, int *lh);
 SDL_Surface *Scanout_surface(void);
@@ -39,6 +39,9 @@ void Scanout_diag(void);
 #else
 #define ROM_LABEL "NX Redux"
 #endif
+/* status.c: battery (-1 = unknown), charger, Wi-Fi bars (0 = not connected), Bluetooth link */
+typedef struct { int battery; bool charging, plugged, full; int wifi; bool bt; } SysStatus;
+void Sys_status(SysStatus *out);
 #define SCREEN_W 1024
 #define SCREEN_H 768
 

@@ -1,5 +1,5 @@
 #!/bin/sh
-# NXT Retro Tube 2.1.3 — by Nguyễn Xuân Thông — NX Redux (TrimUI Brick Pro)
+# NXT Retro Tube 2.2 — by Nguyễn Xuân Thông — NX Redux (TrimUI Brick Pro)
 DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 cd "$DIR" || exit 1
 PLATFORM="${PLATFORM:-tg5040}"
@@ -14,7 +14,7 @@ DATA="${SHARED_USERDATA_PATH:-$DIR/data}/nxt-retro-tube"
 mkdir -p "$DATA/cache" || exit 1
 # yt-dlp is a self-contained Python runtime; Deno solves YouTube's JS challenges.
 chmod +x "$DIR/bin/deno" "$DIR/bin/yt-dlp-runtime/yt-dlp" "$DIR/bin/$PLATFORM/nxt-retro-tube.elf" 2>/dev/null || :
-# Tools-menu icon (NX Redux 2.4.1 / 2.1.2 launcher with NXT Retro Tube + Music entries; see integration/)
+# Tools-menu icon: patches the NX Redux launcher of any version (again after a system update; see integration/)
 sh "$DIR/integration/install-tools-icon.sh" > "$DATA/cache/tools-icon.txt" 2>&1 || :
 # Free the audio device from the ROM music service, like NXT Retro Music.
 CTL="${SYSTEM_PATH:-}/bin/musicplayerctl.elf"
