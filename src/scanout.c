@@ -311,6 +311,13 @@ void Scanout_present(void) {
     if (!SO.flip_ok && SO.kind == 1) { Uint32 now = SDL_GetTicks(); if (now - SO.last < 16) SDL_Delay(16 - (now - SO.last)); }
     SO.last = SDL_GetTicks();
 }
+/* screen off (power key): show black at once (the app stops drawing while off) */
+static bool blanked;
+void Scanout_setBlank(bool on) {
+    blanked = on;
+    if (!SO.kind || !SO.surf) return;
+    if (on) { SDL_FillRect(SO.surf, NULL, 0); Scanout_present(); Scanout_present(); }
+}
 void Scanout_close(void) {
     if (SO.kind == 1) {
         kms_wait_flip(60);

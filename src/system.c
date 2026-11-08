@@ -263,6 +263,23 @@ void Sys_setBacklight(bool on) {
     Log_msg("backlight %s", on ? "on" : "off");
     return;
 #endif
+#ifdef NXT_TUBE_DEV_TG5050
+    /* Smart Pro S: no /dev/disp; the panel's backlight class (if any) and a black frame */
+    {
+        DIR *d = opendir("/sys/class/backlight"); struct dirent *e;
+        while (d && (e = readdir(d))) {
+            if (e->d_name[0] == '.') continue;
+            char p[300]; snprintf(p, sizeof(p), "/sys/class/backlight/%s/bl_power", e->d_name);
+            int fd = open(p, O_WRONLY);
+            if (fd >= 0) { (void)!write(fd, on ? "0" : "4", 1); close(fd); }
+        }
+        if (d) closedir(d);
+        Scanout_setBlank(!on);
+        if (disp_boot.raw_ok) { if (!on) { disp_save(&disp_off); disp_dark(); } else disp_restore(&disp_off, false); }
+        Log_msg("backlight %s", on ? "on" : "off");
+        return;
+    }
+#endif
 #ifdef NXT_TUBE_ROM_STOCK
     /* the level the firmware (or its Task Manager) set, not our library's own */
     if (!on) { disp_save(&disp_off); disp_dark(); }

@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.2 — firmware gốc TrimUI (Stock) — TrimUI Brick / Brick Pro
+# NXT Retro Tube 2.2.1 — firmware gốc TrimUI (Stock) — TrimUI Brick / Brick Pro
 
 ## Cài đặt
 Chép thư mục `Apps/NXT_Retro_Tube` vào `Apps/` trên thẻ nhớ. Mở từ mục Apps (icon NXT Retro Tube).
@@ -6,6 +6,9 @@ Chép thư mục `Apps/NXT_Retro_Tube` vào `Apps/` trên thẻ nhớ. Mở từ
 Trong lúc app hiện trên màn hình, app tạm dừng keymon của firmware (giống NXT Retro Music) để tự xử lý nút nguồn, âm lượng và Home; khi về menu hoặc thoát, keymon chạy lại bình thường. Nút Home bên hông mở bảng nhanh (Task Manager) của firmware nếu có.
 
 Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/nxt-tube-stock/shared/nxt-retro-tube`.
+
+## Mới ở 2.2.1
+- Chỉ thay đổi cho Smart Pro S (máy khác giữ nguyên như 2.2).
 
 ## Mới ở 2.2
 - **Thanh trạng thái** ở góc trên (Trang chủ, Kênh / Thư viện, Cài đặt, Chế độ trẻ em, và khi xem toàn màn hình lúc hiện thanh điều khiển):

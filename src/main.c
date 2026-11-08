@@ -2793,6 +2793,9 @@ int main(int argc, char **argv) {
         if (!qa || getenv("NXT_TUBE_DISPLAY_TEST")) drm = sps_drm_wait();
         /* never let SDL drop to the invisible offscreen driver because of a race on DRM master */
         setenv("SDL_KMSDRM_REQUIRE_DRM_MASTER", "0", 0);
+        /* our window may be a hidden one (CPU drawing straight to the panel): it never gets
+         * keyboard focus, and SDL drops pad events for an unfocused app unless told not to */
+        SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
         /* SDL's own notes on the video drivers it tries (why KMSDRM is refused, ...) into our log */
         SDL_LogSetOutputFunction(sps_sdl_log, NULL);
         SDL_LogSetPriority(SDL_LOG_CATEGORY_VIDEO, SDL_LOG_PRIORITY_DEBUG);

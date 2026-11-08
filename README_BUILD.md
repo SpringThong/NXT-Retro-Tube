@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.2 — mã nguồn
+# NXT Retro Tube 2.2.1 — mã nguồn
 
 **Tác giả:** Nguyễn Xuân Thông
 **Ủng hộ tác giả:** MoMo 0339838267 · Vietcombank (VCB) 0581000786219 · PayPal thongkhung2@gmail.com
@@ -36,6 +36,9 @@ Mã ROM chọn lúc biên dịch: `-DNXT_TUBE_ROM_NXREDUX | NEXTUI | STOCK | MUO
 - Tìm kiếm InnerTube gửi `context.user.enableSafetyMode = true` (Chế độ hạn chế của YouTube) khi bật.
 - Lọc: `Kids_allowed()` áp vào trang chủ, kết quả tìm, trang kênh, hàng "Tiếp theo" và khi mở video; từ khóa so khớp sau khi bỏ dấu tiếng Việt.
 - Giao diện trong `src/main.c`: trang Cài đặt → Chế độ trẻ em (`SC_KIDS`), hộp nhập PIN, màn khóa hết giờ / ngoài giờ, màn nghỉ mắt.
+
+## Mới ở 2.2.1
+- Smart Pro S: `SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1` (cửa sổ ẩn của chế độ scanout không có focus → SDL bỏ sự kiện tay cầm); `Scanout_setBlank()` + `bl_power` khi tắt màn hình.
 
 ## Mới ở 2.2
 - `src/status.c`: pin / sạc (`/sys/class/power_supply`), Wi-Fi (`/sys/class/net/wlan*/operstate`, `/proc/net/wireless`), Bluetooth (`/sys/class/bluetooth/hci*:*`); `draw_status()` trong `main.c` vẽ ở header (qua `header_hints`) và OSD toàn màn hình. Icon `wifi*`, `bluetooth`, `zap` vẽ bằng `tools/make_status_icons.py`. QA: `NXT_TUBE_POWER_DIR`, `NXT_TUBE_FAKE_STATUS=w2b1d`.
@@ -120,7 +123,7 @@ Mã ROM chọn lúc biên dịch: `-DNXT_TUBE_ROM_NXREDUX | NEXTUI | STOCK | MUO
 ```sh
 TOOLCHAIN=/path/to/compiler ./build.sh          # cả bảy bản -> build/<rom>/nxt-retro-tube.elf
 ROM=stock TOOLCHAIN=/path/to/compiler ./build.sh # một ROM
-RUNTIME=./runtime ./package.sh                   # dist/NXT_Retro_Tube_v2.2_{NXRedux,NextUI,Stock,Stock_SmartProS,muOS,Knulli,dArkOS_R36S}.zip + dist/ota-*.zip
+RUNTIME=./runtime ./package.sh                   # dist/NXT_Retro_Tube_v2.2.1_{NXRedux,NextUI,Stock,Stock_SmartProS,muOS,Knulli,dArkOS_R36S}.zip + dist/ota-*.zip
 ```
 Bảy tệp `.elf` dựng từ mã nguồn này (với `SOURCE_DATE_EPOCH=1793034000`) trùng từng byte với bản phát hành 2.1.
 
