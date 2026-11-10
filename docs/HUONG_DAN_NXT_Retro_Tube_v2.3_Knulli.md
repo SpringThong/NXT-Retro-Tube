@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.2.1 — Knulli (TrimUI Brick / Brick Pro)
+# NXT Retro Tube 2.3 — Knulli (TrimUI Brick / Brick Pro)
 
 ## Yêu cầu
 - Knulli bản có hỗ trợ TrimUI Brick Pro (kho mã mới `knulli-linux`, bản 20260511 trở lên). Bản Knulli cũ "Gladiator" (2025) chưa có Brick Pro; với TrimUI Brick thường app vẫn tương thích.
@@ -12,6 +12,13 @@ Chép thư mục `roms` trong gói này vào phân vùng dữ liệu của Knull
 Sau đó trong EmulationStation: **Menu → Cài đặt game (Game settings) → Cập nhật danh sách game (Update gamelists)** (hoặc khởi động lại). App nằm trong **Ports**.
 
 Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm trong `roms/ports/nxt-retro-tube/data`.
+
+## Mới ở 2.3
+- **Giao diện full màn hình trên máy màn 16:9** (Smart Pro / Smart Pro S 1280×720, các máy 16:9 trên muOS / Knulli): trước đây giao diện
+  4:3 bị viền đen hai bên; giờ trải hết bề ngang — Trang chủ / Thư viện 4 cột video, danh sách tìm kiếm, Cài đặt, màn xem video
+  (5 video "Tiếp theo"), bảng nhanh… Máy màn 4:3 (Brick, R36S…) giữ nguyên như cũ.
+- **Video không mở được vì YouTube từ chối đường dẫn (lỗi 403):** app không chờ thử lại lâu nữa mà tự lấy đường dẫn mới qua yt-dlp
+  rồi phát lại (mỗi video một lần).
 
 ## Mới ở 2.2.1
 - Chỉ thay đổi cho Smart Pro S (máy khác giữ nguyên như 2.2).

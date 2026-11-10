@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define APP_NAME "NXT Retro Tube"
-#define APP_VERSION "2.2.1"
+#define APP_VERSION "2.3"
 /* scanout.c: direct panel output (Smart Pro S, when SDL cannot open the panel) */
 bool Scanout_open(int *lw, int *lh);
 SDL_Surface *Scanout_surface(void);
@@ -43,7 +43,13 @@ void Scanout_setBlank(bool on);
 /* status.c: battery (-1 = unknown), charger, Wi-Fi bars (0 = not connected), Bluetooth link */
 typedef struct { int battery; bool charging, plugged, full; int wifi; bool bt; } SysStatus;
 void Sys_status(SysStatus *out);
-#define SCREEN_W 1024
+/* the layout is 768 units tall; its width follows the screen: 1024 on 4:3, ~1365 on 16:9 */
+extern int g_screen_w;
+#define SCREEN_W g_screen_w
+#define SCREEN_R (SCREEN_W - 24)
+#define SCREEN_CX (SCREEN_W / 2)
+#define GCOLS (SCREEN_W >= 1300 ? 4 : 3)        /* video cards per row */
+#define NEXT_N (SCREEN_W >= 1300 ? 5 : 4)       /* "next up" cards on the watch screen */
 #define SCREEN_H 768
 
 /* ---------- logging ---------- */
@@ -108,6 +114,7 @@ typedef struct {
     char *headers;            /* "Key: value\r\n" lines */
     char user_agent[300];
     long long fetched_at;     /* unix seconds */
+    bool direct;              /* from the app's own YouTube client (not yt-dlp) */
     CaptionTrack caps[MAX_CAPS];   /* original-language subtitle tracks (json3 timedtext URLs) */
     int ncaps;
 } StreamInfo;

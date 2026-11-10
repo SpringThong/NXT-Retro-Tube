@@ -721,6 +721,7 @@ static void *fast_work(void *arg) {
                 if (!ok) { StreamInfo_free(&stream); memset(&stream, 0, sizeof(stream)); snprintf(why, sizeof(why), "incomplete formats"); }
             }
             if (ok) {
+                stream.direct = true;
                 Log_msg("resolve %s direct in %.2fs (%s): %d video formats", copy.arg, (SDL_GetTicks() - t0) / 1000.0, bg ? "prefetch" : "now", stream.nvideo);
                 pthread_mutex_lock(&lock);
                 StreamInfo_free(&cache[cache_next]); copy_stream(&cache[cache_next], &stream); cache_next = (cache_next + 1) % CACHE_N;
@@ -788,7 +789,9 @@ static int add_job2(JobKind kind, const char *arg, int start, int count, bool ne
 static int add_job(JobKind kind, const char *arg, int count, bool newest, bool priority) { return add_job2(kind, arg, 0, count, newest, priority); }
 static int add_job3(JobKind kind, const char *arg, int start, int count, bool newest, bool priority, const char *big);
 static int add_job2(JobKind kind, const char *arg, int start, int count, bool newest, bool priority) { return add_job3(kind, arg, start, count, newest, priority, NULL); }
+static bool force_helper;     /* next new job goes to yt-dlp (set and read by the UI thread only) */
 static int add_job3(JobKind kind, const char *arg, int start, int count, bool newest, bool priority, const char *big) {
+    bool helper = force_helper; force_helper = false;
     pthread_mutex_lock(&lock);
     /* reuse a pending identical job */
     for (int i = 0; i < MAX_JOBS; i++) {
@@ -806,7 +809,7 @@ static int add_job3(JobKind kind, const char *arg, int start, int count, bool ne
     }
     if (!slot) { pthread_mutex_unlock(&lock); return 0; }
     memset(slot, 0, sizeof(*slot));
-    slot->used = true; slot->id = next_id++; slot->kind = kind; slot->count = count; slot->start = start; slot->newest = newest; slot->priority = priority;
+    slot->used = true; slot->id = next_id++; slot->kind = kind; slot->count = count; slot->start = start; slot->newest = newest; slot->priority = priority; slot->need_helper = helper;
     scopy(slot->arg, sizeof(slot->arg), arg);
     if (big) slot->big = strdup(big);
     int id = slot->id;
@@ -827,6 +830,14 @@ bool Yt_deferred(const char *id) {
     return r;
 }
 int Yt_resolve(const char *id, bool priority) { return add_job(K_RESOLVE, id, 0, false, priority); }
+/* the direct links of a video were refused (HTTP 403): forget them and ask yt-dlp */
+int Yt_resolveHelper(const char *id) {
+    pthread_mutex_lock(&lock);
+    for (int i = 0; i < CACHE_N; i++) if (cache[i].fetched_at && !strcmp(cache[i].info.id, id)) { StreamInfo_free(&cache[i]); memset(&cache[i], 0, sizeof(cache[i])); }
+    pthread_mutex_unlock(&lock);
+    force_helper = true;
+    return add_job(K_RESOLVE, id, 0, true, true);    /* "newest" keeps it apart from a plain resolve of the same id */
+}
 int Yt_fetch(const char *url) { return add_job3(K_FETCH, "fetch", 0, 0, false, true, url); }
 char *Yt_takeText(int id) {
     pthread_mutex_lock(&lock); Job *j = find(id); char *t = NULL;

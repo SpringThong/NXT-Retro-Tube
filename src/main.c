@@ -192,6 +192,8 @@ static const char *KN(Key k) { for (int i = 0; i < KM_COUNT; i++) if (KM_KEYS[i]
 
 /* ---------- playback control ---------- */
 static bool starts_avc(const char *c) { return !strncmp(c, "avc1", 4) || !strcmp(c, "h264"); }
+int g_screen_w = 1024;
+static bool sps_scan;          /* SDL has no panel driver: draw on the CPU, scanout.c shows the frames */
 static int pick_video(void) {
     StreamInfo *s = &A.stream;
     if (!s->nvideo) return -1;
@@ -203,6 +205,8 @@ static int pick_video(void) {
     /* 640x480 screen and Cortex-A35 cores: Auto = 480p at 30 fps (same picture, far less work) */
     if (!strcmp(q, "auto")) { want = 480; allow60 = false; }
 #endif
+    /* CPU drawing (Smart Pro S stock): at most 720p, 30 fps when there is a choice */
+    if (sps_scan) { if (want > 720) want = 720; allow60 = !strcmp(q, "720p60"); }
     int best = -1, best_key = -1;
     for (int i = 0; i < s->nvideo; i++) {
         StreamFormat *f = &s->video[i];
@@ -224,6 +228,7 @@ static int pick_live(void) {
 #ifdef NXT_TUBE_ROM_DARKOS
     if (!strcmp(q, "auto")) { want = 480; allow60 = false; }
 #endif
+    if (sps_scan) { if (want > 720) want = 720; allow60 = !strcmp(q, "720p60"); }
     int best = -1, best_key = -1, low = 0;
     for (int i = 0; i < s->nhls; i++) {
         if (s->hlsv[i].height < s->hlsv[low].height) low = i;
@@ -347,7 +352,6 @@ static void play_index(int i) {
  * launch.sh runs up to three stages: 0 firmware SDL, 1 system SDL (/usr/lib), 2 firmware SDL
  * plus the CPU fallback; the app exits with code 3 to ask for the next stage. */
 static void sps_sdl_log(void *u, int cat, SDL_LogPriority pr, const char *msg) { (void)u; (void)pr; Log_msg("SDL[%d]: %s", cat, msg); }
-static bool sps_scan;          /* SDL has no panel driver: draw on the CPU, scanout.c shows the frames */
 static int sps_stage(void) { const char *e = getenv("NXT_TUBE_DISPLAY_STAGE"); return e ? atoi(e) : 2; }
 static bool sps_try(const char *what, Uint32 flags, Uint32 rflags) {
     int ww = 1280, wh = 720;
@@ -497,6 +501,13 @@ static bool create_display(void) {
     SDL_RendererInfo info; SDL_GetRendererInfo(A.ren, &info);
     Log_msg("renderer %s, %d texture formats", info.name, info.num_texture_formats);
 #endif
+    /* a wider screen gets a wider layout (same height): 16:9 -> 1365 x 768 */
+    {   int ow = 0, oh = 0;
+        if (!SDL_GetRendererOutputSize(A.ren, &ow, &oh) && ow > 0 && oh > 0 && ow * 100 > oh * 140) {
+            g_screen_w = (SCREEN_H * ow + oh / 2) / oh; if (g_screen_w > 1366) g_screen_w = 1366;
+        } else g_screen_w = 1024;
+        Log_msg("layout %dx%d for a %dx%d screen", SCREEN_W, SCREEN_H, ow, oh);
+    }
     SDL_RenderSetLogicalSize(A.ren, SCREEN_W, SCREEN_H);
     SDL_SetRenderDrawBlendMode(A.ren, SDL_BLENDMODE_BLEND);
     SDL_ShowCursor(SDL_DISABLE);
@@ -692,10 +703,11 @@ static void go_section(int s) {
 }
 static void grid_move(Key k, int *sel, int count, int *focus_out_up, int *focus_out_down) {
     if (count <= 0) { if (k == K_UP && focus_out_up) *focus_out_up = 1; if (k == K_DOWN && focus_out_down) *focus_out_down = 1; return; }
-    if (k == K_LEFT && *sel % 3 > 0) (*sel)--;
-    else if (k == K_RIGHT && *sel % 3 < 2 && *sel + 1 < count) (*sel)++;
-    else if (k == K_UP) { if (*sel >= 3) *sel -= 3; else if (focus_out_up) *focus_out_up = 1; }
-    else if (k == K_DOWN) { if (*sel + 3 < count) *sel += 3; else if (*sel / 3 < (count - 1) / 3) *sel = count - 1; else if (focus_out_down) *focus_out_down = 1; }
+    const int gc = GCOLS;
+    if (k == K_LEFT && *sel % gc > 0) (*sel)--;
+    else if (k == K_RIGHT && *sel % gc < gc - 1 && *sel + 1 < count) (*sel)++;
+    else if (k == K_UP) { if (*sel >= gc) *sel -= gc; else if (focus_out_up) *focus_out_up = 1; }
+    else if (k == K_DOWN) { if (*sel + gc < count) *sel += gc; else if (*sel / gc < (count - 1) / gc) *sel = count - 1; else if (focus_out_down) *focus_out_down = 1; }
 }
 static bool is_playing(void) {
     PlayerStatus st; Player_status(&st);
@@ -1380,11 +1392,11 @@ static void draw_mini(void) {
     D_roundRing(v.x, v.y, v.w, v.h, 6, 2, C_BLACK);
     if (st.state == PS_PAUSED) D_tri(v.x + 52, v.y + 22, v.x + 52, v.y + 50, v.x + 76, v.y + 36, C_INK);
     if (st.duration > 0) { D_rect(v.x, v.y + v.h - 4, v.w, 4, RGBA(244, 239, 230, 70)); D_rect(v.x, v.y + v.h - 4, (int)(v.w * fmin(1, st.position / st.duration)), 4, C_TOMATO); }
-    D_text(F_SEMI, 20, A.cur.title, 156, 622, C_INK, 600, AL_LEFT);
+    D_text(F_SEMI, 20, A.cur.title, 156, 622, C_INK, SCREEN_W - 424, AL_LEFT);
     char tm[64], a[24], b[24]; fmt_time(st.position, a, sizeof(a)); fmt_time(st.duration, b, sizeof(b));
     if (st.live) snprintf(tm, sizeof(tm), "%s", T("TRỰC TIẾP")); else if (A.resolveJob) snprintf(tm, sizeof(tm), "%s", T("Đang lấy luồng…")); else snprintf(tm, sizeof(tm), "%s / %s", a, b);
     D_text(A.resolveJob ? F_MED : F_PIXEL, A.resolveJob ? 18 : 24, tm, 156, 652, C_MUTED, 0, AL_LEFT);
-    D_hint(810, 637, KN(K_SELECT), "Mở lại");
+    D_hint(SCREEN_W - 214, 637, KN(K_SELECT), "Mở lại");
 }
 
 static int grid_vh(void) { return A.hasCur ? 462 : 546; }
@@ -1396,25 +1408,26 @@ static void card_meta(const VideoList *l, int i, int libtab, char *meta, size_t 
 }
 static void draw_grid(const VideoList *l, int sel, bool focus, float *scroll, int libtab, bool loading_more, bool at_end) {
     int vh = grid_vh();
-    int row = sel / 3; float target = row * 298 + 306 - vh; if (target < 0) target = 0;
+    const int gc = GCOLS, gx = (SCREEN_W - (gc * 332 - 20)) / 2;
+    int row = sel / gc; float target = row * 298 + 306 - vh; if (target < 0) target = 0;
     *scroll += (target - *scroll) * 0.35f; if (fabsf(target - *scroll) < 1) *scroll = target;
     SDL_RenderSetClipRect(A.ren, &(SDL_Rect){0, 146, SCREEN_W, vh});
-    int first = (int)(*scroll / 298) * 3;
-    for (int i = first; i < l->count && i < first + 9; i++) {
-        int x = 24 + (i % 3) * 332, y = 146 + 18 + (i / 3) * 298 - (int)*scroll;
+    int first = (int)(*scroll / 298) * gc;
+    for (int i = first; i < l->count && i < first + 3 * gc; i++) {
+        int x = gx + (i % gc) * 332, y = 146 + 18 + (i / gc) * 298 - (int)*scroll;
         if (y > 146 + vh) break;
         char meta[200]; const char *mo; double progress;
         card_meta(l, i, libtab, meta, sizeof(meta), &mo, &progress);
         if (!(focus && i == sel)) draw_card(x, y, 312, &l->items[i], false, progress, mo, libtab == 2);
     }
     if (focus && sel < l->count) {
-        int i = sel, x = 24 + (i % 3) * 332, y = 146 + 18 + (i / 3) * 298 - (int)*scroll;
+        int i = sel, x = gx + (i % gc) * 332, y = 146 + 18 + (i / gc) * 298 - (int)*scroll;
         char meta[200]; const char *mo; double progress;
         card_meta(l, i, libtab, meta, sizeof(meta), &mo, &progress);
         draw_card(x, y, 312, &l->items[i], true, progress, mo, libtab == 2);
     }
     /* footer below the last row: loading more / end of list */
-    int fy = 146 + 18 + ((l->count + 2) / 3) * 298 - (int)*scroll;
+    int fy = 146 + 18 + ((l->count + gc - 1) / gc) * 298 - (int)*scroll;
     if (fy < 146 + vh) {
         if (loading_more) { D_spinner(SCREEN_W / 2 - 120, fy + 24, 12, C_MUSTARD); D_text(F_MED, 18, "Đang tải thêm video…", SCREEN_W / 2 - 96, fy + 12, C_MUTED, 0, AL_LEFT); }
         else if (at_end) D_text(F_MED, 18, "Hết danh sách", SCREEN_W / 2, fy + 12, C_DIM, 0, AL_CENTER);
@@ -1531,8 +1544,8 @@ static void draw_home(void) {
         else snprintf(b, sizeof(b), "%s", T("Chế độ trẻ em"));
         status_min = 292 + D_textW(F_BOLD, 17, b) + 24 + 16;
     }
-    header_hints(1000 - 46 - 4, k, t, 2);
-    D_circle(977, 38, 23, C_BLACK); D_circle(977, 38, 21, C_MUSTARD); D_text(F_XBOLD, 18, "NX", 977, 38 - D_fontHeight(F_XBOLD, 18) / 2, C_DARK, 0, AL_CENTER);
+    header_hints(SCREEN_R - 50, k, t, 2);
+    D_circle(SCREEN_W - 47, 38, 23, C_BLACK); D_circle(SCREEN_W - 47, 38, 21, C_MUSTARD); D_text(F_XBOLD, 18, "NX", SCREEN_W - 47, 38 - D_fontHeight(F_XBOLD, 18) / 2, C_DARK, 0, AL_CENTER);
     draw_stripes(76);
     if (K.enabled) {
         char b[96], m[32];
@@ -1550,7 +1563,7 @@ static void draw_home(void) {
     else if (busy) draw_empty(T("Đang tải danh sách video…"), T("Lần đầu có thể mất vài giây"), true);
     else if (f->err[0]) draw_empty(T("Chưa tải được danh sách"), f->err, false);
     else draw_empty(T("Chưa có video"), T("Bấm A để tải lại"), false);
-    if (busy && f->replacing && l->count) D_spinner(1000 - 18, 146 + 18, 10, C_MUSTARD);
+    if (busy && f->replacing && l->count) D_spinner(SCREEN_R - 18, 146 + 18, 10, C_MUSTARD);
     if (A.hasCur) draw_mini();
     draw_nav(0, A.focus == 2 ? A.navSel : -1);
 }
@@ -1561,7 +1574,7 @@ static void draw_library(void) {
     char l1r1[16]; snprintf(l1r1, sizeof(l1r1), "%s %s", KN(K_L1), KN(K_R1));
     const char *k[2] = {KN(K_B), l1r1}, *t[2] = {"Về", "Đổi mục"};
     status_min = Download_busy() ? 660 : 24 + D_textW(F_XBOLD, 34, T(A.libTab == 2 ? "Kênh" : "Thư viện")) + 30;
-    header_hints(1000, k, t, 2);
+    header_hints(SCREEN_R, k, t, 2);
     draw_stripes(76);
     const char *tabs[4] = {"Lịch sử", "Xem sau", "Kênh theo dõi", "Đã tải"};
     char lbl[4][64]; const char *lp[4];
@@ -1581,17 +1594,17 @@ static void draw_library(void) {
 static void draw_search(void) {
     D_rect(0, 0, SCREEN_W, SCREEN_H, C_BG);
     if (A.results && A.channelView) {
-        D_text(F_XBOLD, 30, A.resultTitle, 24, 26, C_INK, 960, AL_LEFT);
+        D_text(F_XBOLD, 30, A.resultTitle, 24, 26, C_INK, SCREEN_W - 64, AL_LEFT);
     } else {
-        D_shadow(24, 24, 970, 72, 14, 6); D_round(24, 24, 970, 72, 14, C_SURFACE); D_roundRing(24, 24, 970, 72, 14, 3, C_BLACK);
+        D_shadow(24, 24, SCREEN_W - 54, 72, 14, 6); D_round(24, 24, SCREEN_W - 54, 72, 14, C_SURFACE); D_roundRing(24, 24, SCREEN_W - 54, 72, 14, 3, C_BLACK);
         D_icon("search", 44, 45, 30, C_MUSTARD);
         int tw = 0;
         update_query();
         if (A.query[0]) tw = D_text(F_SEMI, 30, A.query, 88, 60 - D_fontHeight(F_SEMI, 30) / 2, C_INK, 556, AL_LEFT);
         else D_text(F_REG, 28, A.wordEntry ? "Nhập từ khóa cấm…" : "Tìm video, kênh…", 96, 60 - D_fontHeight(F_REG, 28) / 2, RGBA(0x8F, 0x87, 0x99, 255), 0, AL_LEFT);
         if (!A.results && A.searchFocus == 0 && (SDL_GetTicks() / 500) % 2 == 0) D_rect(tw ? 88 + tw + 2 : 88, 43, 3, 34, C_MUSTARD);
-        D_hint(860, 46, KN(K_X), "Xóa hết");
-        D_hint(660, 46, KN(K_SELECT), A.telexOff ? "Telex: tắt" : "Telex: bật");
+        D_hint(SCREEN_W - 164, 46, KN(K_X), "Xóa hết");
+        D_hint(SCREEN_W - 364, 46, KN(K_SELECT), A.telexOff ? "Telex: tắt" : "Telex: bật");
     }
     if (!A.results) {
         for (int i = 0; i < 40; i++) {
@@ -1612,18 +1625,18 @@ static void draw_search(void) {
                                           : "Telex: aa â · aw ă · ee ê · oo ô · ow ơ · uw ư · dd đ · s f r x j = sắc huyền hỏi ngã nặng · gõ 2 lần để giữ chữ (ff = f).", 40, 440, 570, 3, 25, C_MUTED);
         const VideoList *rec = Store_recentSearches();
         D_text(F_XBOLD, 17, "TÌM GẦN ĐÂY", 648, 124, A.searchFocus == 1 ? C_MUSTARD : C_DIM, 0, AL_LEFT);
-        if (rec->count) D_text(F_MED, 15, A.searchFocus == 1 ? "A tìm lại · X xóa · Trái: bàn phím" : "Phải để chọn", 1000, 126, C_DIM, 0, AL_RIGHT);
+        if (rec->count) D_text(F_MED, 15, A.searchFocus == 1 ? "A tìm lại · X xóa · Trái: bàn phím" : "Phải để chọn", SCREEN_R, 126, C_DIM, 0, AL_RIGHT);
         for (int i = 0; i < rec->count && i < 8; i++) {
             bool on = A.searchFocus == 1 && i == A.recentSel;
             int y = 152 + i * 58;
-            if (on) { D_round(651, y + 3, 352, 52, 10, C_BLACK); }
-            D_round(648, y, 352, 52, 10, on ? C_MUSTARD : C_BAR);
+            if (on) { D_round(651, y + 3, SCREEN_W - 672, 52, 10, C_BLACK); }
+            D_round(648, y, SCREEN_W - 672, 52, 10, on ? C_MUSTARD : C_BAR);
             D_icon("clock", 662, y + 14, 22, on ? C_DARK : C_DIM);
             D_text(F_REG, 20, rec->items[i].title, 696, y + 12, on ? C_DARK : C_INK, 290, AL_LEFT);
         }
         if (!rec->count) D_text(F_REG, 19, "Chưa có lượt tìm nào", 648, 160, C_DIM, 0, AL_LEFT);
     } else {
-        if (!A.channelView) D_text(F_MED, 18, A.resultTitle, 24, 106, C_MUTED, 960, AL_LEFT);
+        if (!A.channelView) D_text(F_MED, 18, A.resultTitle, 24, 106, C_MUTED, SCREEN_W - 64, AL_LEFT);
         if (A.searchJob && !A.found.count) { D_spinner(SCREEN_W / 2, 380, 30, C_MUSTARD); D_text(F_BOLD, 22, "Đang tìm trên YouTube…", SCREEN_W / 2, 430, C_INK, 0, AL_CENTER); }
         else if (!A.found.count) D_text(F_BOLD, 22, A.searchErr[0] ? A.searchErr : T("Không có kết quả"), SCREEN_W / 2, 400, C_INK, 900, AL_CENTER);
         float target = A.resultSel > 3 ? (A.resultSel - 3) * 114 : 0;
@@ -1634,14 +1647,14 @@ static void draw_search(void) {
             if (y < 30 || y > 716) continue;
             VideoItem *v = &A.found.items[i];
             bool on = i == A.resultSel;
-            if (on) { D_shadow(24, y, 976, 106, 14, 8); D_round(24, y, 976, 106, 14, C_RAISED); D_roundRing(18, y - 6, 988, 118, 18, 4, C_MUSTARD); }
+            if (on) { D_shadow(24, y, SCREEN_W - 48, 106, 14, 8); D_round(24, y, SCREEN_W - 48, 106, 14, C_RAISED); D_roundRing(18, y - 6, SCREEN_W - 36, 118, 18, 4, C_MUSTARD); }
             D_thumb(v->id, (SDL_Rect){30, y + 4, 176, 99}, on ? C_RAISED : C_BG);
             if (v->live) { D_round(140, y + 76, 60, 22, 4, C_TOMATO); D_text(F_XBOLD, 13, "LIVE", 170, y + 79, C_DARK, 0, AL_CENTER); }
             else if (v->duration > 0) { char d[24]; fmt_time(v->duration, d, sizeof(d)); int bw = D_textW(F_PIXEL, 20, d) + 10; D_round(200 - bw, y + 76, bw, 22, 4, RGBA(8, 7, 12, 220)); D_text(F_PIXEL, 20, d, 200 - bw / 2, y + 75, C_INK, 0, AL_CENTER); }
-            D_textBox(F_SEMI, 22, v->title, 226, y + 14, 760, 2, 28, C_INK);
+            D_textBox(F_SEMI, 22, v->title, 226, y + 14, SCREEN_W - 264, 2, 28, C_INK);
             char views[64], meta[220]; fmt_views(v->views, v->live, views, sizeof(views));
             snprintf(meta, sizeof(meta), "%s%s%s", v->channel, *views ? " · " : "", views);
-            D_text(F_REG, 17, meta, 226, y + 74, C_MUTED, 760, AL_LEFT);
+            D_text(F_REG, 17, meta, 226, y + 74, C_MUTED, SCREEN_W - 264, AL_LEFT);
         }
         int fy = 140 + A.found.count * 114 - (int)A.rscroll;
         if (A.found.count && fy < 716) {
@@ -1746,19 +1759,19 @@ static void draw_settings(void) {
     D_text(F_XBOLD, 34, A.keyPage ? "Đổi phím" : "Cài đặt", 24, 16, C_INK, 0, AL_LEFT);
     const char *k[2] = {KN(K_B), KN(K_A)}, *t[2] = {"Về", A.keyPage ? "Gán phím" : "Chọn"};
     status_min = 24 + D_textW(F_XBOLD, 34, T(A.keyPage ? "Đổi phím" : "Cài đặt")) + 30;
-    header_hints(1000, k, t, 2);
+    header_hints(SCREEN_R, k, t, 2);
     draw_stripes(76);
     if (A.keyPage) {
         for (int i = 0; i < KM_COUNT; i++) {
             int y = 96 + i * 58; bool on = i == A.keySelRow;
-            if (on) { D_round(27, y + 3, 970, 50, 10, C_BLACK); }
-            D_round(24, y, 970, 50, 10, on ? C_INK : C_SURFACE);
+            if (on) { D_round(27, y + 3, SCREEN_W - 54, 50, 10, C_BLACK); }
+            D_round(24, y, SCREEN_W - 54, 50, 10, on ? C_INK : C_SURFACE);
             SDL_Color fg = on ? C_DARK : C_INK, sub = on ? C_LINE : C_MUTED;
             D_text(F_BOLD, 22, KM_LABEL[i], 44, y + 12, fg, 0, AL_LEFT);
             D_text(F_REG, 18, KM_ROLE[i], 190, y + 14, sub, 560, AL_LEFT);
             const char *val = A.capture == i ? T("Nhấn nút mới…") : phys_name(S.keymap[i]);
-            D_round(800, y + 9, 170, 32, 8, on ? C_MUSTARD : C_RAISED);
-            D_text(A.capture == i ? F_BOLD : F_PIXEL, A.capture == i ? 16 : 24, val, 885, y + (A.capture == i ? 15 : 10), on ? C_DARK : C_INK, 160, AL_CENTER);
+            D_round(SCREEN_W - 224, y + 9, 170, 32, 8, on ? C_MUSTARD : C_RAISED);
+            D_text(A.capture == i ? F_BOLD : F_PIXEL, A.capture == i ? 16 : 24, val, SCREEN_W - 139, y + (A.capture == i ? 15 : 10), on ? C_DARK : C_INK, 160, AL_CENTER);
         }
         D_rect(0, 716, SCREEN_W, 52, C_BAR);
         int x = 24;
@@ -1788,12 +1801,12 @@ static void draw_settings(void) {
     /* detail card */
     char label[160], value[96], note[300];
     setting_text(A.setSel, label, sizeof(label), value, sizeof(value), note, sizeof(note));
-    D_shadow(688, 96, 312, 300, 14, 6); D_round(688, 96, 312, 300, 14, C_SURFACE); D_roundRing(688, 96, 312, 300, 14, 2, C_BLACK);
+    D_shadow(688, 96, SCREEN_W - 712, 300, 14, 6); D_round(688, 96, SCREEN_W - 712, 300, 14, C_SURFACE); D_roundRing(688, 96, SCREEN_W - 712, 300, 14, 2, C_BLACK);
     D_icon("settings", 708, 116, 30, C_MUSTARD);
-    D_textBox(F_BOLD, 22, label, 708, 156, 272, 2, 28, C_INK);
-    D_text(F_PIXEL, 30, value, 708, 214, C_MUSTARD, 272, AL_LEFT);
-    D_textBox(F_REG, 17, note, 708, 258, 272, 5, 24, C_MUTED);
-    D_textBox(F_REG, 16, A.setSel <= SET_HOME ? "Trái / Phải để đổi giá trị" : "A để thực hiện", 708, 416, 290, 2, 22, C_DIM);
+    D_textBox(F_BOLD, 22, label, 708, 156, SCREEN_W - 752, 2, 28, C_INK);
+    D_text(F_PIXEL, 30, value, 708, 214, C_MUSTARD, SCREEN_W - 752, AL_LEFT);
+    D_textBox(F_REG, 17, note, 708, 258, SCREEN_W - 752, 5, 24, C_MUTED);
+    D_textBox(F_REG, 16, A.setSel <= SET_HOME ? "Trái / Phải để đổi giá trị" : "A để thực hiện", 708, 416, SCREEN_W - 734, 2, 22, C_DIM);
     draw_nav(4, -1);
 }
 
@@ -1937,21 +1950,21 @@ static void draw_watch(void) {
     D_roundRing(a.x, a.y, a.w, a.h, 14, 3, C_BLACK);
     if (A.watchFocus == 0) D_roundRing(a.x - 8, a.y - 8, a.w + 16, a.h + 16, 20, 4, C_MUSTARD);
     if (A.stats) draw_stats(a.x + 12, a.y + 12, &st);
-    int x = 688;
-    int used = D_textBox(F_BOLD, 25, A.cur.title, x, 20, 312, 4, 31, C_INK);
+    int x = 688, cw = SCREEN_W - 712;
+    int used = D_textBox(F_BOLD, 25, A.cur.title, x, 20, cw, 4, 31, C_INK);
     int y = 20 + used * 31 + 8;
     char views[64], meta[160]; fmt_views(A.cur.views, A.cur.live, views, sizeof(views));
     if (strlen(A.stream.upload_date) == 8) snprintf(meta, sizeof(meta), "%s%s%.2s/%.2s/%.4s", views, *views ? " · " : "", A.stream.upload_date + 6, A.stream.upload_date + 4, A.stream.upload_date);
     else snprintf(meta, sizeof(meta), "%s", views);
-    D_text(F_REG, 18, meta, x, y, C_MUTED, 312, AL_LEFT); y += 40;
+    D_text(F_REG, 18, meta, x, y, C_MUTED, cw, AL_LEFT); y += 40;
     D_circle(x + 24, y + 24, 24, C_BLACK); D_circle(x + 24, y + 24, 22, avatar_color(A.cur.channel));
     char ini[16]; initials(A.cur.channel, ini); D_text(F_XBOLD, 17, ini, x + 24, y + 24 - D_fontHeight(F_XBOLD, 17) / 2, C_INK, 0, AL_CENTER);
     bool following = Store_isChannel(A.cur.channel_id);
     const char *fl = T(following ? "Đang theo dõi" : "Theo dõi");
     int fw = D_textW(F_BOLD, 16, fl) + 24;
-    D_text(F_SEMI, 21, A.cur.channel, x + 60, y + 10, C_INK, 312 - 72 - fw, AL_LEFT);
-    D_round(x + 312 - fw, y + 4, fw, 40, 10, following ? C_RAISED : C_INK);
-    D_text(F_BOLD, 16, fl, x + 312 - fw / 2, y + 24 - D_fontHeight(F_BOLD, 16) / 2, following ? C_INK : C_DARK, 0, AL_CENTER);
+    D_text(F_SEMI, 21, A.cur.channel, x + 60, y + 10, C_INK, cw - 72 - fw, AL_LEFT);
+    D_round(x + cw - fw, y + 4, fw, 40, 10, following ? C_RAISED : C_INK);
+    D_text(F_BOLD, 16, fl, x + cw - fw / 2, y + 24 - D_fontHeight(F_BOLD, 16) / 2, following ? C_INK : C_DARK, 0, AL_CENTER);
     y += 66;
     const char *acts[4][2] = {{"clock", Store_isLater(A.cur.id) ? "Đã lưu" : "Xem sau"}, {"download", Store_hasDownload(A.cur.id) ? "Đã tải" : "Tải về"}, {"sliders-horizontal", QUALITY_LABEL[A.quality]}, {"gauge", "Tốc độ"}};
     for (int i = 0; i < 4; i++) {
@@ -1961,19 +1974,20 @@ static void draw_watch(void) {
         D_text(F_SEMI, 17, acts[i][1], bx + 44, by + 26 - D_fontHeight(F_SEMI, 17) / 2, C_INK, 98, AL_LEFT);
     }
     D_text(F_XBOLD, 24, "Tiếp theo", 24, 402, C_INK, 0, AL_LEFT);
-    D_text(F_MED, 17, "Xuống để chọn · L1/R1 video trước/sau · SELECT tùy chọn", 1000, 408, C_MUTED, 0, AL_RIGHT);
+    D_text(F_MED, 17, "Xuống để chọn · L1/R1 video trước/sau · SELECT tùy chọn", SCREEN_R, 408, C_MUTED, 0, AL_RIGHT);
     int nnext = A.queue.count - A.qpos - 1; if (nnext < 0) nnext = 0;
     if (A.nextSel >= nnext) A.nextSel = nnext ? nnext - 1 : 0;
     /* a sliding window of 4 over all suggestions */
     if (A.nextSel < A.nextFirst) A.nextFirst = A.nextSel;
-    if (A.nextSel > A.nextFirst + 3) A.nextFirst = A.nextSel - 3;
-    if (A.nextFirst > (nnext > 4 ? nnext - 4 : 0)) A.nextFirst = nnext > 4 ? nnext - 4 : 0;
+    const int nw = NEXT_N;
+    if (A.nextSel > A.nextFirst + nw - 1) A.nextFirst = A.nextSel - (nw - 1);
+    if (A.nextFirst > (nnext > nw ? nnext - nw : 0)) A.nextFirst = nnext > nw ? nnext - nw : 0;
     if (nnext <= 0) D_text(F_REG, 19, A.moreJob ? "Đang tải thêm gợi ý…" : "Hết danh sách · bấm B để chọn video khác", 24, 470, C_DIM, 0, AL_LEFT);
-    if (nnext > 4) {
+    if (nnext > nw) {
         char pos[32]; snprintf(pos, sizeof(pos), "%d / %d", A.nextSel + 1, nnext);
         D_text(F_PIXEL, 22, pos, 150, 404, C_DIM, 0, AL_LEFT);
     }
-    for (int i = A.nextFirst; i < nnext && i < A.nextFirst + 4; i++) {
+    for (int i = A.nextFirst; i < nnext && i < A.nextFirst + nw; i++) {
         VideoItem *v = &A.queue.items[A.qpos + 1 + i];
         int cx = 24 + (i - A.nextFirst) * 248, cy = 444;
         bool on = A.watchFocus == 1 && i == A.nextSel;
@@ -1991,36 +2005,37 @@ static void draw_watch(void) {
 static void draw_full(void) {
     D_rect(0, 0, SCREEN_W, SCREEN_H, C_BLACK);
     PlayerStatus st; ui_status(&st);
-    SDL_Rect a = {0, 96, 1024, 576};
+    int fvh = SCREEN_W * 9 / 16; if (fvh > SCREEN_H) fvh = SCREEN_H;
+    SDL_Rect a = {0, (SCREEN_H - fvh) / 2, SCREEN_W, fvh};
     SDL_Texture *t; int w, h;
     Player_present(A.ren, &t, &w, &h);
     if (st.audio_only || !t) {
         D_rect(a.x, a.y, a.w, a.h, RGBA(0x12, 0x0F, 0x18, 255));
         D_thumb(A.cur.id, (SDL_Rect){352, 260, 320, 180}, RGBA(0x12, 0x0F, 0x18, 255));
-        if (st.audio_only && st.state != PS_IDLE && st.state != PS_ERROR && !A.watchErr[0]) D_text(F_BOLD, 24, "Chỉ âm thanh · tiết kiệm pin", 512, 470, C_INK, 0, AL_CENTER);
+        if (st.audio_only && st.state != PS_IDLE && st.state != PS_ERROR && !A.watchErr[0]) D_text(F_BOLD, 24, "Chỉ âm thanh · tiết kiệm pin", SCREEN_CX, 470, C_INK, 0, AL_CENTER);
     } else D_videoNative(t, w, h);
     Uint32 now = SDL_GetTicks();
     bool osd = A.osd && (now < A.osdUntil || st.state != PS_PLAYING || A.panel);
     if (A.osd && now >= A.osdUntil && st.state == PS_PLAYING && !A.panel) A.osd = false;
     draw_player_overlays(a, &st, true);
-    draw_subs(&st, 512, osd ? 668 : 656, 900, true);
+    draw_subs(&st, SCREEN_CX, osd ? 668 : 656, SCREEN_W - 124, true);
     if (osd) {
         const char *qb = quality_badge(); int qw = D_textW(F_XBOLD, 17, qb) + 20, sw = D_textW(F_BOLD, 17, SPEED_LABEL[A.speedIx]) + 20;
         /* clock / battery / Wi-Fi left of the badges; the title gets what is left (at least 420 px) */
-        int sl = draw_status(1000 - sw - 10 - qw - 22, 24 + 420 + 20, 47);
+        int sl = draw_status(SCREEN_R - sw - 10 - qw - 22, 24 + 420 + 20, 47);
         int tmax = sl - 24 - 16; if (tmax > 700) tmax = 700;
         D_text(F_BOLD, 25, A.cur.title, 24, 16, C_INK, tmax, AL_LEFT);
         char views[64], meta[200]; fmt_views(A.cur.views, A.cur.live, views, sizeof(views));
         snprintf(meta, sizeof(meta), "%s%s%s", A.cur.channel, *views ? " · " : "", views);
         D_text(F_REG, 18, meta, 24, 54, C_MUTED, tmax, AL_LEFT);
-        D_round(1000 - sw, 32, sw, 30, 4, RGBA(244, 239, 230, 40)); D_text(F_BOLD, 17, SPEED_LABEL[A.speedIx], 1000 - sw / 2, 35, C_INK, 0, AL_CENTER);
-        D_round(1000 - sw - 10 - qw, 32, qw, 30, 4, C_MUSTARD); D_text(F_XBOLD, 17, qb, 1000 - sw - 10 - qw / 2, 35, C_DARK, 0, AL_CENTER);
-        if (st.state == PS_PLAYING && !A.panel) { D_circle(512, 384, 48, RGBA(8, 7, 12, 130)); D_ring(512, 384, 48, 3, C_INK); D_round(496, 364, 10, 40, 3, C_INK); D_round(518, 364, 10, 40, 3, C_INK); }
-        draw_progress(24, 684, 976, 8, &st);
+        D_round(SCREEN_R - sw, 32, sw, 30, 4, RGBA(244, 239, 230, 40)); D_text(F_BOLD, 17, SPEED_LABEL[A.speedIx], SCREEN_R - sw / 2, 35, C_INK, 0, AL_CENTER);
+        D_round(SCREEN_R - sw - 10 - qw, 32, qw, 30, 4, C_MUSTARD); D_text(F_XBOLD, 17, qb, SCREEN_R - sw - 10 - qw / 2, 35, C_DARK, 0, AL_CENTER);
+        if (st.state == PS_PLAYING && !A.panel) { D_circle(SCREEN_CX, 384, 48, RGBA(8, 7, 12, 130)); D_ring(SCREEN_CX, 384, 48, 3, C_INK); D_round(SCREEN_CX - 16, 364, 10, 40, 3, C_INK); D_round(SCREEN_CX + 6, 364, 10, 40, 3, C_INK); }
+        draw_progress(24, 684, SCREEN_W - 48, 8, &st);
         char tm[64], p1[24], p2[24]; fmt_time(st.position, p1, sizeof(p1)); fmt_time(st.duration, p2, sizeof(p2));
         if (st.live) snprintf(tm, sizeof(tm), "%s", T("TRỰC TIẾP")); else snprintf(tm, sizeof(tm), "%s / %s", p1, p2);
         D_text(F_PIXEL, 30, tm, 24, 708, C_INK, 0, AL_LEFT);
-        int hx = 1000;
+        int hx = SCREEN_R;
         const char *hk[4][2] = {{KN(K_B), "Thu nhỏ"}, {KN(K_SELECT), "Tùy chọn"}, {KN(K_START), "Tốc độ"}, {KN(K_X), "Chất lượng"}};
         for (int i = 0; i < 4; i++) {
             int kw = D_textW(F_PIXEL, 24, hk[i][0]) + (strlen(hk[i][0]) > 1 ? 14 : 0); if (kw < 28) kw = 28;
@@ -2035,7 +2050,7 @@ static void draw_full(void) {
 static void draw_volume(void) {
     if (SDL_GetTicks() >= A.volUntil) return;
     int v = Sys_volume();
-    int x = 944, y = 170, w = 60, h = 400;
+    int x = SCREEN_W - 80, y = 170, w = 60, h = 400;
     D_round(x + 6, y + 6, w, h, 16, C_BLACK); D_round(x, y, w, h, 16, C_SURFACE); D_roundRing(x, y, w, h, 16, 2, C_LINE);
     int bx = x + 20, by = y + 58, bh = h - 120;
     D_round(bx, by, 20, bh, 10, C_RAISED);
@@ -2049,7 +2064,7 @@ static void draw_volume(void) {
 static void draw_quick(void) {
     if (!A.quick) return;
     D_rect(0, 0, SCREEN_W, SCREEN_H, RGBA(8, 7, 12, 170));
-    int x = 232, y = 104, w = 560, h = 556;
+    int w = 560, x = (SCREEN_W - w) / 2, y = 104, h = 556;
     D_round(x + 10, y + 10, w, h, 18, C_BLACK); D_round(x, y, w, h, 18, C_SURFACE); D_roundRing(x, y, w, h, 18, 3, C_BLACK);
     D_text(F_XBOLD, 28, "Bảng nhanh", x + 28, y + 22, C_INK, 0, AL_LEFT);
     char vol[64]; snprintf(vol, sizeof(vol), "%s · %d%%", T(Sys_output()), Sys_volume() * 5);
@@ -2071,7 +2086,7 @@ static void draw_quick(void) {
 static void draw_about(void) {
     if (!A.about) return;
     D_rect(0, 0, SCREEN_W, SCREEN_H, RGBA(8, 7, 12, 190));
-    int x = 172, y = 120, w = 680, h = 520;
+    int w = 680, x = (SCREEN_W - w) / 2, y = 120, h = 520;
     D_round(x + 10, y + 10, w, h, 18, C_BLACK); D_round(x, y, w, h, 18, C_SURFACE); D_roundRing(x, y, w, h, 18, 3, C_BLACK);
     D_icon("thumbs-up", x + 30, y + 28, 34, C_MUSTARD);
     D_text(F_XBOLD, 30, "NXT Retro Tube", x + 76, y + 26, C_INK, 0, AL_LEFT);
@@ -2286,7 +2301,7 @@ static void draw_kids(void) {
     draw_stripes(76);
     if (A.kidsPage == 0) {
         const char *k[2] = {KN(K_B), KN(K_A)}, *t[2] = {"Về", "Chọn"};
-        header_hints(1000, k, t, 2);
+        header_hints(SCREEN_R, k, t, 2);
         int rowh = 56, top = 96, vis = 10;
         float target = A.kidsSel > vis - 3 ? (A.kidsSel - (vis - 3)) * rowh : 0;
         A.kidsScroll += (target - A.kidsScroll) * 0.35f;
@@ -2305,12 +2320,12 @@ static void draw_kids(void) {
         }
         SDL_RenderSetClipRect(A.ren, NULL);
         char label[160], value[96], note[300]; kids_row_text(A.kidsSel, label, sizeof(label), value, sizeof(value), note, sizeof(note));
-        D_shadow(688, 96, 312, 330, 14, 6); D_round(688, 96, 312, 330, 14, C_SURFACE); D_roundRing(688, 96, 312, 330, 14, 2, C_BLACK);
+        D_shadow(688, 96, SCREEN_W - 712, 330, 14, 6); D_round(688, 96, SCREEN_W - 712, 330, 14, C_SURFACE); D_roundRing(688, 96, SCREEN_W - 712, 330, 14, 2, C_BLACK);
         D_icon("users", 708, 116, 30, C_MUSTARD);
-        D_textBox(F_BOLD, 22, label, 708, 156, 272, 2, 28, C_INK);
-        D_text(F_PIXEL, 30, value, 708, 214, C_MUSTARD, 272, AL_LEFT);
-        D_textBox(F_REG, 17, note, 708, 258, 272, 6, 24, C_MUTED);
-        D_textBox(F_REG, 16, A.kidsSel >= KR_LIMIT && A.kidsSel <= KR_BREAK ? "Trái / Phải để đổi giá trị" : "A để thực hiện", 708, 440, 290, 2, 22, C_DIM);
+        D_textBox(F_BOLD, 22, label, 708, 156, SCREEN_W - 752, 2, 28, C_INK);
+        D_text(F_PIXEL, 30, value, 708, 214, C_MUSTARD, SCREEN_W - 752, AL_LEFT);
+        D_textBox(F_REG, 17, note, 708, 258, SCREEN_W - 752, 6, 24, C_MUTED);
+        D_textBox(F_REG, 16, A.kidsSel >= KR_LIMIT && A.kidsSel <= KR_BREAK ? "Trái / Phải để đổi giá trị" : "A để thực hiện", 708, 440, SCREEN_W - 734, 2, 22, C_DIM);
         draw_nav(4, -1);
         return;
     }
@@ -2321,7 +2336,7 @@ static void draw_kids(void) {
     else if (A.kidsPage == 2) { keys[nk] = KN(K_A); texts[nk++] = "Duyệt kênh"; }
     else if (A.kidsPage == 3) { keys[nk] = KN(K_Y); texts[nk++] = "Thêm từ"; keys[nk] = KN(K_X); texts[nk++] = "Xóa"; }
     else { keys[nk] = KN(K_X); texts[nk++] = "Xóa danh sách"; }
-    header_hints(1000, keys, texts, nk);
+    header_hints(SCREEN_R, keys, texts, nk);
     int top = 96, rowh = 62;
     if (A.kidsPage == 4) {
         /* the last 7 days as bars */
@@ -2350,15 +2365,15 @@ static void draw_kids(void) {
         int y = top + i * rowh - (int)A.kidsScroll;
         if (y < top - rowh || y > 690) continue;
         bool on = i == A.kidsListSel;
-        if (on) D_round(27, y + 3, 976, 54, 10, C_BLACK);
-        D_round(24, y, 976, 54, 10, on ? C_INK : C_SURFACE);
+        if (on) D_round(27, y + 3, SCREEN_W - 48, 54, 10, C_BLACK);
+        D_round(24, y, SCREEN_W - 48, 54, 10, on ? C_INK : C_SURFACE);
         char l1[300], l2[200];
         if (A.kidsPage == 1) { snprintf(l1, sizeof(l1), "%s", K.approved[i].name); snprintf(l2, sizeof(l2), "%s", K.approved[i].id); }
         else if (A.kidsPage == 2) { snprintf(l1, sizeof(l1), "%s", A.kidsPick.items[i].channel); snprintf(l2, sizeof(l2), "%s", A.kidsPick.items[i].title); }
         else if (A.kidsPage == 3) { snprintf(l1, sizeof(l1), "%s", K.words[i]); l2[0] = 0; }
         else { char m[32]; fmt_minutes(K.log[i].secs, m, sizeof(m)); snprintf(l1, sizeof(l1), "%s", K.log[i].title); snprintf(l2, sizeof(l2), "%s %s · %s · %s", K.log[i].day + 5, K.log[i].at, K.log[i].channel, m); }
-        D_text(F_SEMI, 20, l1, 44, y + (l2[0] ? 6 : 15), on ? C_DARK : C_INK, 930, AL_LEFT);
-        if (l2[0]) D_text(F_REG, 15, l2, 44, y + 32, on ? C_LINE : C_MUTED, 930, AL_LEFT);
+        D_text(F_SEMI, 20, l1, 44, y + (l2[0] ? 6 : 15), on ? C_DARK : C_INK, SCREEN_W - 94, AL_LEFT);
+        if (l2[0]) D_text(F_REG, 15, l2, 44, y + 32, on ? C_LINE : C_MUTED, SCREEN_W - 94, AL_LEFT);
     }
     SDL_RenderSetClipRect(A.ren, NULL);
     draw_nav(4, -1);
@@ -2366,7 +2381,7 @@ static void draw_kids(void) {
 static void draw_pin(void) {
     if (!A.pinFor) return;
     D_rect(0, 0, SCREEN_W, SCREEN_H, RGBA(8, 7, 12, 200));
-    int x = 232, y = 170, w = 560, h = 420;
+    int w = 560, x = (SCREEN_W - w) / 2, y = 170, h = 420;
     D_round(x + 10, y + 10, w, h, 18, C_BLACK); D_round(x, y, w, h, 18, C_SURFACE); D_roundRing(x, y, w, h, 18, 3, C_BLACK);
     const char *title = A.pinFor == PIN_NEW1 ? "Đặt mã PIN phụ huynh" : A.pinFor == PIN_NEW2 ? "Nhập lại mã PIN mới" :
                         A.pinFor == PIN_SETTINGS ? "Mã PIN để mở Cài đặt" : A.pinFor == PIN_QUIT ? "Mã PIN để thoát app" :
@@ -2390,7 +2405,7 @@ static void draw_pin(void) {
 static void draw_kids_lock(void) {
     if (!K.enabled || (!A.kidsLock && !A.kidsBreak) || parent_mode()) return;
     D_rect(0, 0, SCREEN_W, SCREEN_H, RGBA(8, 7, 12, 235));
-    int x = 172, y = 170, w = 680, h = 420;
+    int w = 680, x = (SCREEN_W - w) / 2, y = 170, h = 420;
     D_round(x + 10, y + 10, w, h, 18, C_BLACK); D_round(x, y, w, h, 18, C_SURFACE); D_roundRing(x, y, w, h, 18, 3, C_BLACK);
     D_icon("clock", x + w / 2 - 30, y + 34, 60, C_MUSTARD);
     if (A.kidsBreak) {
@@ -2416,8 +2431,8 @@ static void draw_sleep(void) {
     if (left >= 60000) return;
     char b[120]; snprintf(b, sizeof(b), T("Sắp tắt sau %d giây · A: thêm 15 phút"), left > 0 ? (left + 999) / 1000 : 0);
     int w = D_textW(F_SEMI, 20, b) + 44, y = 24;
-    D_round(512 - w / 2 + 6, y + 6, w, 50, 12, C_BLACK); D_round(512 - w / 2, y, w, 50, 12, C_MUSTARD);
-    D_text(F_SEMI, 20, b, 512, y + 25 - D_fontHeight(F_SEMI, 20) / 2, C_DARK, w - 30, AL_CENTER);
+    D_round(SCREEN_CX - w / 2 + 6, y + 6, w, 50, 12, C_BLACK); D_round(SCREEN_CX - w / 2, y, w, 50, 12, C_MUSTARD);
+    D_text(F_SEMI, 20, b, SCREEN_CX, y + 25 - D_fontHeight(F_SEMI, 20) / 2, C_DARK, w - 30, AL_CENTER);
 }
 static void draw_overlays(void) {
     draw_kids_lock();
@@ -2427,14 +2442,14 @@ static void draw_overlays(void) {
     draw_pin();
     draw_volume();
     if (A.toast[0] && SDL_GetTicks() < A.toastUntil) {
-        int w = D_textW(F_SEMI, 20, A.toast) + 44; if (w > 960) w = 960;
+        int w = D_textW(F_SEMI, 20, A.toast) + 44; if (w > SCREEN_W - 64) w = SCREEN_W - 64;
         int y = A.screen == SC_FULL ? 600 : 540;
-        D_round(512 - w / 2 + 6, y + 6, w, 50, 12, C_BLACK); D_round(512 - w / 2, y, w, 50, 12, C_INK);
-        D_text(F_SEMI, 20, A.toast, 512, y + 25 - D_fontHeight(F_SEMI, 20) / 2, C_DARK, w - 30, AL_CENTER);
+        D_round(SCREEN_CX - w / 2 + 6, y + 6, w, 50, 12, C_BLACK); D_round(SCREEN_CX - w / 2, y, w, 50, 12, C_INK);
+        D_text(F_SEMI, 20, A.toast, SCREEN_CX, y + 25 - D_fontHeight(F_SEMI, 20) / 2, C_DARK, w - 30, AL_CENTER);
     }
     if (A.dialog) {
         D_rect(0, 0, SCREEN_W, SCREEN_H, RGBA(8, 7, 12, 190));
-        int x = 182, y = 214, w = 660, h = 340;
+        int w = 660, x = (SCREEN_W - w) / 2, y = 214, h = 340;
         D_round(x + 10, y + 10, w, h, 18, C_BLACK); D_round(x, y, w, h, 18, C_SURFACE); D_roundRing(x, y, w, h, 18, 3, C_BLACK);
         D_text(F_XBOLD, 28, "Đang phát video · thoát NXT Retro Tube?", x + 30, y + 28, C_INK, w - 60, AL_LEFT);
         const char *t[2] = {"Nghe nền (chỉ tiếng)", "Thoát hẳn ứng dụng"}, *n[2] = {"Thoát ra ngoài, tiếng vẫn phát · tắt hình để tiết kiệm pin", "Dừng video và đóng hoàn toàn NXT Retro Tube"};
@@ -2602,8 +2617,21 @@ static void cpu_tick(Uint32 now) {
     next = now + 500;
     Sys_cpuLevel(A.screenOff || A.hidden ? 0 : Player_wantsBoost() ? 2 : 1);
 }
+int Yt_resolveHelper(const char *id);
+/* a direct link refused by YouTube (403, mostly): once per video, ask yt-dlp for fresh links */
+static void stream_retry(void) {
+    static char tried[32];
+    if (!A.hasCur || A.resolveJob || A.localPlayback || !A.streamReady || !A.stream.direct) return;
+    PlayerStatus st; Player_status(&st);
+    if (st.state != PS_ERROR || !strcmp(tried, A.cur.id)) return;
+    snprintf(tried, sizeof(tried), "%s", A.cur.id);
+    Log_msg("stream %s refused (%s): asking yt-dlp for new links", A.cur.id, st.error);
+    Player_close(); A.streamReady = false; A.watchErr[0] = 0;
+    A.resolveJob = Yt_resolveHelper(A.cur.id); A.resolveSince = SDL_GetTicks();
+}
 static void update(void) {
     poll_jobs();
+    stream_retry();
     cpu_tick(SDL_GetTicks());
     kids_tick();
 #ifdef NXT_TUBE_ROM_DARKOS
@@ -2665,7 +2693,7 @@ static void update(void) {
     /* home grid near the end: load the next page */
     if (A.screen == SC_HOME && A.focus == 0) {
         Feed *f = &A.feed[A.tab];
-        if (f->list.count && A.sel / 3 >= (f->list.count - 1) / 3 - 1 && !feed_busy(f) && !f->exhausted && !f->err[0]) request_page(A.tab, true);
+        if (f->list.count && A.sel / GCOLS >= (f->list.count - 1) / GCOLS - 1 && !feed_busy(f) && !f->exhausted && !f->err[0]) request_page(A.tab, true);
     }
     /* Prefetch: the item under the cursor (after a short rest) and the next few,
      * so pressing A starts at once. Paused while a video decodes. */

@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.2.1 — muOS (TrimUI Brick / Brick Pro)
+# NXT Retro Tube 2.3 — muOS (TrimUI Brick / Brick Pro)
 
 ## Yêu cầu
 - muOS bản có hỗ trợ TrimUI Brick Pro (`tui-brick-pro`, ví dụ 2606 "Andromeda" trở lên). TrimUI Brick thường (`tui-brick`) cũng dùng được.
@@ -9,6 +9,13 @@ Chép thư mục `MUOS/application/NXT Retro Tube` vào `MUOS/application/` trê
 Mở từ **Applications** (Ứng dụng) → **NXT Retro Tube**.
 
 Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm trong `MUOS/application/NXT Retro Tube/data`.
+
+## Mới ở 2.3
+- **Giao diện full màn hình trên máy màn 16:9** (Smart Pro / Smart Pro S 1280×720, các máy 16:9 trên muOS / Knulli): trước đây giao diện
+  4:3 bị viền đen hai bên; giờ trải hết bề ngang — Trang chủ / Thư viện 4 cột video, danh sách tìm kiếm, Cài đặt, màn xem video
+  (5 video "Tiếp theo"), bảng nhanh… Máy màn 4:3 (Brick, R36S…) giữ nguyên như cũ.
+- **Video không mở được vì YouTube từ chối đường dẫn (lỗi 403):** app không chờ thử lại lâu nữa mà tự lấy đường dẫn mới qua yt-dlp
+  rồi phát lại (mỗi video một lần).
 
 ## Mới ở 2.2.1
 - Chỉ thay đổi cho Smart Pro S (máy khác giữ nguyên như 2.2).

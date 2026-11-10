@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.2.1 — firmware gốc TrimUI (Stock) — TrimUI Smart Pro S
+# NXT Retro Tube 2.3 — firmware gốc TrimUI (Stock) — TrimUI Smart Pro S
 
 ## Cài đặt
 Chép thư mục `Apps/NXT_Retro_Tube` vào `Apps/` trên thẻ nhớ (firmware gốc Smart Pro S 1.0.1 trở lên). Mở từ mục Apps (icon NXT Retro Tube).
@@ -19,6 +19,14 @@ Mình chưa có máy Smart Pro S để thử trực tiếp: nếu gặp lỗi (m
 `.userdata/nxt-tube-stock/shared/nxt-retro-tube/cache/nxt-retro-tube-run.txt` cho tác giả để sửa ở bản sau (qua OTA).
 
 Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/nxt-tube-stock/shared/nxt-retro-tube`.
+
+## Mới ở 2.3
+- **Giao diện full màn hình trên máy màn 16:9** (Smart Pro / Smart Pro S 1280×720, các máy 16:9 trên muOS / Knulli): trước đây giao diện
+  4:3 bị viền đen hai bên; giờ trải hết bề ngang — Trang chủ / Thư viện 4 cột video, danh sách tìm kiếm, Cài đặt, màn xem video
+  (5 video "Tiếp theo"), bảng nhanh… Máy màn 4:3 (Brick, R36S…) giữ nguyên như cũ.
+- **Video không mở được vì YouTube từ chối đường dẫn (lỗi 403):** app không chờ thử lại lâu nữa mà tự lấy đường dẫn mới qua yt-dlp
+  rồi phát lại (mỗi video một lần).
+- **Smart Pro S:** chất lượng Tự động / 1080p giới hạn ở 720p 30 hình/giây (máy đang vẽ bằng CPU: 1080p chỉ được ~8 hình/giây, nóng máy).
 
 ## Mới ở 2.2.1 (Smart Pro S)
 - **Sửa lỗi vào được app nhưng bị đơ (không bấm được phím nào):** ở 2.1.3 app vẽ thẳng lên màn hình qua một cửa sổ ẩn; cửa sổ ẩn không được

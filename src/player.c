@@ -77,7 +77,13 @@ static int chunk_read(void *opaque, uint8_t *buf, int n) {
             if (c->cur) avio_closep(&c->cur);
             int r = chunk_open(c);
             if (r == AVERROR_EXIT) return r;
-            if (r < 0) { Log_msg("http open failed at %lld: %s", (long long)c->pos, av_err2str(r)); av_usleep(400000 * (attempt + 1)); continue; }
+            if (r < 0) {
+                Log_msg("http open failed at %lld: %s", (long long)c->pos, av_err2str(r));
+                /* refused (403): one more try (it is sometimes passing), then give up quickly so the
+                 * app can fetch fresh links instead of waiting through every retry */
+                if (r == AVERROR_HTTP_FORBIDDEN && attempt >= 1) return r;
+                av_usleep(400000 * (attempt + 1)); continue;
+            }
         }
         int want = n;
         if (c->end > 0 && c->pos + want > c->end) want = (int)(c->end - c->pos);
