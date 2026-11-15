@@ -229,6 +229,39 @@ static int interrupt_cb(void *opaque) {
 }
 
 /* ---------- audio ---------- */
+/* volume boost (soft limiter, no harsh clipping) and "clear voice": a 2.8 kHz presence lift + 110 Hz high-pass */
+static struct { int boost; bool voice; float b[2][5]; float z[2][2][2]; } FX;
+static void biquad_design(float *c, int type, double f0, double q, double gain_db) {
+    double A = pow(10, gain_db / 40), w = 2 * M_PI * f0 / OUT_RATE, cw = cos(w), sw = sin(w), al = sw / (2 * q);
+    double b0, b1, b2, a0, a1, a2;
+    if (type == 0) { b0 = 1 + al * A; b1 = -2 * cw; b2 = 1 - al * A; a0 = 1 + al / A; a1 = -2 * cw; a2 = 1 - al / A; }   /* peaking */
+    else { b0 = (1 + cw) / 2; b1 = -(1 + cw); b2 = (1 + cw) / 2; a0 = 1 + al; a1 = -2 * cw; a2 = 1 - al; }               /* high-pass */
+    c[0] = b0 / a0; c[1] = b1 / a0; c[2] = b2 / a0; c[3] = a1 / a0; c[4] = a2 / a0;
+}
+void Player_setBoost(int level, bool voice) {
+    pthread_mutex_lock(&P.lock);
+    FX.boost = level < 0 ? 0 : level > 3 ? 3 : level; FX.voice = voice;
+    biquad_design(FX.b[0], 0, 2800, 0.9, 5.0); biquad_design(FX.b[1], 1, 110, 0.7, 0);
+    memset(FX.z, 0, sizeof(FX.z));
+    pthread_mutex_unlock(&P.lock);
+}
+static void fx_apply(float *out, int frames) {
+    if (FX.voice) for (int f = 0; f < 2; f++) {
+        float *c = FX.b[f];
+        for (int ch = 0; ch < 2; ch++) {
+            float z1 = FX.z[f][ch][0], z2 = FX.z[f][ch][1];
+            for (int i = 0; i < frames; i++) { float x = out[i * 2 + ch], y = c[0] * x + z1; z1 = c[1] * x - c[3] * y + z2; z2 = c[2] * x - c[4] * y; out[i * 2 + ch] = y; }
+            FX.z[f][ch][0] = z1; FX.z[f][ch][1] = z2;
+        }
+    }
+    float g = FX.boost ? 1.0f + 0.5f * FX.boost : FX.voice ? 0.92f : 1.0f;
+    if (g == 1.0f) return;
+    for (int i = 0; i < frames * 2; i++) {
+        float x = out[i] * g, a = fabsf(x);
+        if (a > 0.6f) { float o = a - 0.6f; a = 0.6f + 0.4f * o / (o + 0.4f); x = x < 0 ? -a : a; }   /* knee at -4.4 dBFS, never above 1 */
+        out[i] = x;
+    }
+}
 static void audio_callback(void *u, Uint8 *stream, int len) {
     (void)u;
     float *out = (float *)stream; int frames = len / (int)(sizeof(float) * 2), done = 0;
@@ -249,6 +282,7 @@ static void audio_callback(void *u, Uint8 *stream, int len) {
             }
         }
         P.clock_ticks = SDL_GetTicks();
+        if (FX.boost || FX.voice) fx_apply(out, done);
         { float g = P.gain * P.fade; if (g < 0.999f) for (int i = 0; i < done * 2; i++) out[i] *= g; }
         if (done < frames) {
             if (P.aq.eof && P.audio_eof_done && !P.rcount) P.ended = true;

@@ -124,7 +124,7 @@ bool Store_toggleChannel(const VideoItem *v) {
     snprintf(c.id, sizeof(c.id), "%.11s", v->channel_id + (strlen(v->channel_id) > 11 ? strlen(v->channel_id) - 11 : 0)); /* unique key */
     snprintf(c.title, sizeof(c.title), "%s", v->channel); snprintf(c.channel, sizeof(c.channel), "%s", v->channel);
     snprintf(c.channel_id, sizeof(c.channel_id), "%s", v->channel_id);
-    insert_front(&channels, &c, 100); dirty = true; return true;
+    insert_front(&channels, &c, 500); dirty = true; return true;
 }
 const VideoList *Store_downloads(void) { return &downloads; }
 const char *Store_downloadPath(const char *id, bool audio) {
@@ -179,4 +179,73 @@ int Store_recentChannels(char out[][128], int max) {
         if (!dup) snprintf(out[n++], 128, "%s", c);
     }
     return n;
+}
+
+/* ---------- local playlists (playlists.json): "Yêu thích" + up to 7 of your own ---------- */
+#define PL_MAX 8
+static struct { char name[48]; VideoList list; } pls[PL_MAX];
+static int npl; static bool pl_loaded;
+static void pl_path(char *p, size_t n) { snprintf(p, n, "%s/playlists.json", paths.data); }
+static void pl_load(void) {
+    if (pl_loaded) return;
+    pl_loaded = true;
+    char p[1300]; pl_path(p, sizeof(p));
+    JSON_Value *root = json_parse_file(p);
+    JSON_Array *a = json_value_get_array(root);
+    for (size_t i = 0; a && i < json_array_get_count(a) && npl < PL_MAX; i++) {
+        JSON_Object *o = json_array_get_object(a, i); if (!o) continue;
+        snprintf(pls[npl].name, sizeof(pls[npl].name), "%s", json_object_get_string(o, "name") ? json_object_get_string(o, "name") : "");
+        list_from(json_object_get_array(o, "items"), &pls[npl].list, false);
+        npl++;
+    }
+    json_value_free(root);
+    if (!npl) { snprintf(pls[0].name, sizeof(pls[0].name), "%s", "Yêu thích"); npl = 1; }
+}
+void PL_save(void) {
+    pl_load();
+    JSON_Value *root = json_value_init_array();
+    for (int i = 0; i < npl; i++) {
+        JSON_Value *v = json_value_init_object(); JSON_Object *o = json_value_get_object(v);
+        json_object_set_string(o, "name", pls[i].name);
+        json_object_set_value(o, "items", list_to(&pls[i].list, false));
+        json_array_append_value(json_value_get_array(root), v);
+    }
+    char p[1300], tmp[1360]; pl_path(p, sizeof(p)); snprintf(tmp, sizeof(tmp), "%s.tmp", p);
+    if (json_serialize_to_file_pretty(root, tmp) == JSONSuccess) rename(tmp, p);
+    json_value_free(root);
+}
+int PL_count(void) { pl_load(); return npl; }
+const char *PL_name(int i) { pl_load(); return i >= 0 && i < npl ? pls[i].name : ""; }
+const VideoList *PL_list(int i) { pl_load(); static VideoList empty; return i >= 0 && i < npl ? &pls[i].list : &empty; }
+int PL_create(const char *name) {
+    pl_load();
+    if (npl >= PL_MAX || !name || !*name) return -1;
+    memset(&pls[npl], 0, sizeof(pls[npl]));
+    snprintf(pls[npl].name, sizeof(pls[npl].name), "%s", name);
+    npl++; PL_save(); return npl - 1;
+}
+void PL_delete(int i) {
+    pl_load();
+    if (i <= 0 || i >= npl) return;   /* "Yêu thích" stays */
+    VideoList_clear(&pls[i].list);
+    memmove(&pls[i], &pls[i + 1], (npl - i - 1) * sizeof(pls[0])); npl--;
+    memset(&pls[npl], 0, sizeof(pls[npl]));
+    PL_save();
+}
+bool PL_has(int i, const char *id) {
+    pl_load();
+    if (i < 0 || i >= npl) return false;
+    for (int k = 0; k < pls[i].list.count; k++) if (!strcmp(pls[i].list.items[k].id, id)) return true;
+    return false;
+}
+bool PL_toggle(int i, const VideoItem *v) {   /* true = added */
+    pl_load();
+    if (i < 0 || i >= npl) return false;
+    VideoList *l = &pls[i].list;
+    for (int k = 0; k < l->count; k++) if (!strcmp(l->items[k].id, v->id)) {
+        memmove(&l->items[k], &l->items[k + 1], (l->count - k - 1) * sizeof(VideoItem)); l->count--; PL_save(); return false;
+    }
+    if (l->count >= 300) return false;
+    VideoItem it = *v; it.watched = 0;
+    VideoList_add(l, &it); PL_save(); return true;
 }

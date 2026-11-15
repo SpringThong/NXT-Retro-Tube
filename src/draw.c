@@ -1,6 +1,23 @@
 /* Drawing helpers: shapes via SDL_RenderGeometry, cached text and icons.
  * SPDX-License-Identifier: GPL-3.0-only */
 #include "draw.h"
+
+/* BG SURFACE RAISED BAR LINE INK MUTED DIM accent focus */
+static const Uint32 THEME_HEX[THEMES][10] = {
+    {0x16141C, 0x221F2B, 0x2C2838, 0x1C1924, 0x3A3548, 0xF4EFE6, 0xB7AEC2, 0x9C93A8, 0xFF6A3D, 0xF7C548},   /* Retro (default) */
+    {0x0F0F0F, 0x1E1E1E, 0x272727, 0x161616, 0x3A3A3A, 0xF1F1F1, 0xAAAAAA, 0x8E8E8E, 0xFF2D2D, 0xFFFFFF},   /* YouTube */
+    {0x0B1622, 0x132233, 0x1A2D42, 0x0F1C2B, 0x284057, 0xE8F1F8, 0xA4B8CA, 0x8399AE, 0x2EC5E8, 0x7EE0A8},   /* Ocean */
+    {0x101A14, 0x18261D, 0x203226, 0x142019, 0x2E4535, 0xECF3E8, 0xAFC2AF, 0x91A694, 0x8BD346, 0xF2D35B},   /* Forest */
+    {0x150F1F, 0x22182F, 0x2D2040, 0x1B1328, 0x41305A, 0xF6EEFF, 0xC3B0DA, 0xA48FBE, 0xFF4FA3, 0x6FE3FF},   /* Neon */
+    {0x000000, 0x111111, 0x1A1A1A, 0x080808, 0x2A2A2A, 0xEDEDED, 0xA8A8A8, 0x8A8A8A, 0xFF8A3D, 0xF7C548},   /* AMOLED black */
+};
+static const char *THEME_NAME[THEMES] = {"Retro cam", "YouTube đỏ", "Đại dương", "Rừng xanh", "Neon hồng", "Đen tuyền"};
+SDL_Color g_pal[10];
+void D_setTheme(int t) {
+    if (t < 0 || t >= THEMES) t = 0;
+    for (int i = 0; i < 10; i++) { Uint32 h = THEME_HEX[t][i]; g_pal[i] = (SDL_Color){(Uint8)(h >> 16), (Uint8)(h >> 8), (Uint8)h, 255}; }
+}
+const char *D_themeName(int t) { return THEME_NAME[t < 0 || t >= THEMES ? 0 : t]; }
 #ifdef NXT_TUBE_PW
 /* muOS / Knulli: no dependency on the firmware's SDL2_image */
 #define STB_IMAGE_IMPLEMENTATION

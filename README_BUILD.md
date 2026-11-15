@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.3.9 — mã nguồn
+# NXT Retro Tube 2.3.10 — mã nguồn
 
 **Tác giả:** Nguyễn Xuân Thông
 **Ủng hộ tác giả:** MoMo 0339838267 · Vietcombank (VCB) 0581000786219 · PayPal thongkhung2@gmail.com
@@ -36,6 +36,16 @@ Mã ROM chọn lúc biên dịch: `-DNXT_TUBE_ROM_NXREDUX | NEXTUI | STOCK | MUO
 - Tìm kiếm InnerTube gửi `context.user.enableSafetyMode = true` (Chế độ hạn chế của YouTube) khi bật.
 - Lọc: `Kids_allowed()` áp vào trang chủ, kết quả tìm, trang kênh, hàng "Tiếp theo" và khi mở video; từ khóa so khớp sau khi bỏ dấu tiếng Việt.
 - Giao diện trong `src/main.c`: trang Cài đặt → Chế độ trẻ em (`SC_KIDS`), hộp nhập PIN, màn khóa hết giờ / ngoài giờ, màn nghỉ mắt.
+
+## Mới ở 2.3.10 (thử nghiệm, nhánh thu-nghiem-2.4)
+- Hàng tab trang chủ là danh mục `CH_*` (`chips_build()`, `S.chip_order`/`chip_hidden`/`custom_chip`), tab "Xem tiếp" = `@yt:FEhistory` (đăng nhập) hoặc `@local:continue`.
+  `account.c` đọc vạch đã xem (`percentDurationWatched` / `startPercent`) → `VideoItem.watched`, `Account_resumeSeconds()`; `resume_at()` trong `main.c`.
+- Màu giao diện chạy lúc chạy (`g_pal[]`, `D_setTheme`), trang Tùy biến (`draw_custom`, `cust_key`), bàn phím dùng chung cho tên app / tab từ khóa / tên danh sách (`A.textFor`).
+- `src/export.c`: thư mục `NXT Tube` (`Export_dir`), remux MP4/M4A/Opus bằng libavformat (cần muxer mp4, ipod, ogg, opus: `deps/build-ffmpeg.sh` đã thêm), MP3 bằng shine (`third_party/shine`, LGPL-2.0), nhập `subscriptions.csv` Takeout.
+  `download.c`: `Download_start(v, h, kind)` với `DL_VIDEO / DL_VIDEO_MP4 / DL_M4A / DL_OPUS / DL_MP3`.
+- `src/extras.c`: SponsorBlock (tiền tố SHA-256 4 ký tự), ảnh xem trước khi tua (storyboard: spec của player hoặc định dạng `sbN` của yt-dlp → `StreamInfo.sb`). `yt.c`: chương từ yt-dlp hoặc mô tả (`StreamInfo.chap`).
+- `player.c`: `Player_setBoost()` (tăng âm lượng có soft-limit, lọc giọng nói 2.8 kHz + cắt trầm 110 Hz) trong callback âm thanh.
+- Danh sách phát cục bộ `PL_*` trong `store.c` (`playlists.json`), báo video mới / tự tải khi sạc (`newvideo_tick`, `channel-news.json`), bộ lọc tìm kiếm (`search_q` → `@sp:<params>|từ khóa`).
 
 ## Mới ở 2.3.9
 - `src/account.c`: đăng nhập thiết bị YouTube TV (`/o/oauth2/device/code`, `/o/oauth2/token`, refresh), client id/secret lấy từ base.js của youtube.com/tv nếu cái có sẵn bị từ chối; feed qua client TVHTML5 có Bearer (`FEwhat_to_watch`, `FEsubscriptions`), bộ đọc tile TV + lockupViewModel + videoRenderer; truy vấn `@yt:<browseId>` trong job tìm kiếm (không bao giờ chuyển cho yt-dlp). QR: `src/qrcodegen.c` (Nayuki, MIT).

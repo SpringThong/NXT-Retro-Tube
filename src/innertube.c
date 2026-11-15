@@ -244,9 +244,11 @@ char *Innertube_player(const char *video_id, char *err, size_t en) {
     if (json_object_get_string(vd, "lengthSeconds")) json_object_set_number(o, "duration", atof(json_object_get_string(vd, "lengthSeconds")));
     if (json_object_get_string(vd, "viewCount")) json_object_set_number(o, "view_count", atof(json_object_get_string(vd, "viewCount")));
     if (json_object_get_string(vd, "shortDescription")) {
-        char d[600]; snprintf(d, sizeof(d), "%s", json_object_get_string(vd, "shortDescription"));
+        char d[3000]; snprintf(d, sizeof(d), "%s", json_object_get_string(vd, "shortDescription"));
         json_object_set_string(o, "description", d);
     }
+    const char *sbspec = json_object_dotget_string(r, "storyboards.playerStoryboardSpecRenderer.spec");
+    if (sbspec) json_object_set_string(o, "storyboard_spec", sbspec);
     bool live = json_object_get_boolean(vd, "isLive") == 1;
     if (live) { json_object_set_boolean(o, "is_live", true); json_object_set_string(o, "live_status", "is_live"); }
     JSON_Value *fv = json_value_init_array(); JSON_Array *fa = json_value_get_array(fv);
@@ -369,6 +371,11 @@ static bool search_page(const char *q, bool newest, const char *cont, VideoList 
     json_object_dotset_string(b, "context.client.gl", "VN");
     if (vis[0]) json_object_dotset_string(b, "context.client.visitorData", vis);
     if (cont) json_object_set_string(b, "continuation", cont);
+    else if (!strncmp(q, "@sp:", 4) && strchr(q, '|')) {
+        /* search filters (upload date / length / sort / live), already encoded by the app */
+        char sp[64]; snprintf(sp, sizeof(sp), "%.*s", (int)(strchr(q, '|') - q - 4), q + 4);
+        json_object_set_string(b, "query", strchr(q, '|') + 1); json_object_set_string(b, "params", sp);
+    }
     else { json_object_set_string(b, "query", q); json_object_set_string(b, "params", newest ? "CAISAhAB" : "EgIQAQ%3D%3D"); }
     char *body = json_serialize_to_string(bv); json_value_free(bv);
     char headers[900], url[256];

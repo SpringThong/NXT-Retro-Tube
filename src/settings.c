@@ -16,6 +16,7 @@ static void path(char *out, size_t n) { snprintf(out, n, "%s/settings.json", pat
 void Settings_load(void) {
     memset(&S, 0, sizeof(S));
     S.autoplay = true; S.prefetch = true; S.telex = true; S.audio_out = 0; S.av_offset_ms = 0; S.dac_volume = 12;
+    S.sponsor = 1; S.newbadge = true; S.saver = true;
     S.sub_mode = 0; S.sub_size = 1; S.ota_auto = true;   /* subtitles: auto, medium, in the app's language */
     Settings_defaultKeys();
     char p[1200]; path(p, sizeof(p));
@@ -36,6 +37,20 @@ void Settings_load(void) {
         if (json_object_has_value(o, "ota_auto")) S.ota_auto = json_object_get_boolean(o, "ota_auto") == 1;
         if (json_object_has_value(o, "sub_mode")) S.sub_mode = (int)json_object_get_number(o, "sub_mode");
         if (json_object_has_value(o, "sub_size")) S.sub_size = (int)json_object_get_number(o, "sub_size");
+        if (json_object_has_value(o, "theme")) S.theme = (int)json_object_get_number(o, "theme");
+        if (json_object_has_value(o, "chip_hidden")) S.chip_hidden = (unsigned)json_object_get_number(o, "chip_hidden");
+        if (json_object_has_value(o, "status_hide")) S.status_hide = (unsigned)json_object_get_number(o, "status_hide");
+        if (json_object_has_value(o, "sponsor")) S.sponsor = (int)json_object_get_number(o, "sponsor");
+        if (json_object_has_value(o, "boost")) S.boost = (int)json_object_get_number(o, "boost");
+        if (json_object_has_value(o, "voice")) S.voice = json_object_get_boolean(o, "voice") == 1;
+        if (json_object_has_value(o, "saver")) S.saver = json_object_get_boolean(o, "saver") == 1;
+        if (json_object_has_value(o, "autodl")) S.autodl = json_object_get_boolean(o, "autodl") == 1;
+        if (json_object_has_value(o, "newbadge")) S.newbadge = json_object_get_boolean(o, "newbadge") == 1;
+        const char *st;
+        if ((st = json_object_get_string(o, "app_title"))) snprintf(S.app_title, sizeof(S.app_title), "%s", st);
+        if ((st = json_object_get_string(o, "chip_order"))) snprintf(S.chip_order, sizeof(S.chip_order), "%s", st);
+        JSON_Array *cc = json_object_get_array(o, "custom_chips");
+        for (int i = 0; cc && i < 4 && i < (int)json_array_get_count(cc); i++) { const char *c = json_array_get_string(cc, i); if (c) snprintf(S.custom_chip[i], sizeof(S.custom_chip[i]), "%s", c); }
         const char *sl = json_object_get_string(o, "sub_lang");
         if (sl) snprintf(S.sub_lang, sizeof(S.sub_lang), "%s", sl);
         JSON_Array *k = json_object_get_array(o, "keymap");
@@ -48,6 +63,9 @@ void Settings_load(void) {
     if (S.sub_mode < 0 || S.sub_mode > 2) S.sub_mode = 0;
     if (S.sub_size < 0 || S.sub_size > 2) S.sub_size = 1;
     if (S.av_offset_ms < -400 || S.av_offset_ms > 400) S.av_offset_ms = 0;
+    if (S.theme < 0 || S.theme > 5) S.theme = 0;
+    if (S.sponsor < 0 || S.sponsor > 2) S.sponsor = 0;
+    if (S.boost < 0 || S.boost > 3) S.boost = 0;
 }
 void Settings_save(void) {
     JSON_Value *root = json_value_init_object(); JSON_Object *o = json_value_get_object(root);
@@ -66,6 +84,18 @@ void Settings_save(void) {
     json_object_set_number(o, "sub_mode", S.sub_mode);
     json_object_set_number(o, "sub_size", S.sub_size);
     json_object_set_string(o, "sub_lang", S.sub_lang);
+    json_object_set_number(o, "theme", S.theme);
+    json_object_set_string(o, "app_title", S.app_title);
+    json_object_set_string(o, "chip_order", S.chip_order);
+    json_object_set_number(o, "chip_hidden", S.chip_hidden);
+    json_object_set_number(o, "status_hide", S.status_hide);
+    json_object_set_number(o, "sponsor", S.sponsor);
+    json_object_set_number(o, "boost", S.boost);
+    json_object_set_boolean(o, "voice", S.voice);
+    json_object_set_boolean(o, "saver", S.saver);
+    json_object_set_boolean(o, "autodl", S.autodl);
+    json_object_set_boolean(o, "newbadge", S.newbadge);
+    { JSON_Value *cv = json_value_init_array(); for (int i = 0; i < 4; i++) json_array_append_string(json_value_get_array(cv), S.custom_chip[i]); json_object_set_value(o, "custom_chips", cv); }
     JSON_Value *k = json_value_init_array();
     for (int i = 0; i < KM_COUNT; i++) json_array_append_number(json_value_get_array(k), S.keymap[i]);
     json_object_set_value(o, "keymap", k);

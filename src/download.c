@@ -17,7 +17,7 @@ extern char **environ;
 static pthread_t thread;
 static bool busy, started;
 static char status[160];
-static VideoItem current; static int height;
+static VideoItem current; static int height, kind;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static bool finished_ok, finished;
 
@@ -49,9 +49,46 @@ static int run(const char *format, const char *out, bool fast) {
     int st = 0; while (waitpid(pid, &st, 0) < 0) {}
     return WIFEXITED(st) ? WEXITSTATUS(st) : -1;
 }
+static void set_status(const char *fmt, const char *arg) { pthread_mutex_lock(&lock); snprintf(status, sizeof(status), T(fmt), arg); pthread_mutex_unlock(&lock); }
+static struct stat st_;
+static bool have(const char *p) { return !stat(p, &st_) && st_.st_size > 0; }
+/* music: the AAC track (kept for offline listening in the app) and the file in the export folder */
+static bool work_music(char *msg, size_t n) {
+    char audio[1300]; snprintf(audio, sizeof(audio), "%s", Store_downloadPath(current.id, true));
+    if (!have(audio)) {
+        set_status("Đang tải nhạc · %.60s", current.title);
+        int r = run("140/ba[ext=m4a]/ba", audio, true);
+        if (r) r = run("140/ba[ext=m4a]/ba", audio, false);
+        if (r) { unlink(audio); snprintf(msg, n, "%s", T("Không tải được tiếng")); return false; }
+    }
+    if (kind == DL_OPUS) {
+        char tmp[1300]; snprintf(tmp, sizeof(tmp), "%s/dl-%s.webm", paths.cache, current.id);
+        set_status("Đang tải Opus · %.60s", current.title);
+        int r = run("251/ba[acodec=opus]", tmp, true);
+        if (r) r = run("251/ba[acodec=opus]", tmp, false);
+        bool ok = !r && Export_audio(&current, DL_OPUS, tmp, msg, n);
+        unlink(tmp);
+        if (!r && !ok) return false;
+        if (r) { snprintf(msg, n, "%s", T("Video này không có Opus")); return false; }
+        return true;
+    }
+    set_status(kind == DL_MP3 ? "Đang chuyển sang MP3 · %.60s" : "Đang lưu M4A · %.60s", current.title);
+    return Export_audio(&current, kind, audio, msg, n);
+}
 static void *work(void *u) {
     (void)u;
     char dir[1200]; snprintf(dir, sizeof(dir), "%s/downloads", paths.data); mkdir(dir, 0755);
+    if (kind >= DL_M4A) {
+        char msg[400] = "";
+        bool ok = work_music(msg, sizeof(msg));
+        pthread_mutex_lock(&lock);
+        finished_ok = have(Store_downloadPath(current.id, true));
+        snprintf(status, sizeof(status), "%s", ok ? msg : msg[0] ? msg : T("Tải thất bại"));
+        finished = true; busy = false;
+        pthread_mutex_unlock(&lock);
+        Log_msg("download music %s kind %d: %s", current.id, kind, ok ? "ok" : msg);
+        return NULL;
+    }
     char vf[200];
     snprintf(vf, sizeof(vf), "bv*[vcodec^=avc1][height<=%d][ext=mp4]/bv*[height<=%d][ext=mp4]/18", height, height);
     char video[1300], audio[1300];
@@ -67,20 +104,33 @@ static void *work(void *u) {
     finished_ok = r1 == 0 && r2 == 0;
     if (!finished_ok) { unlink(video); unlink(audio); }
     snprintf(status, sizeof(status), finished_ok ? T("Đã tải xong · %.60s") : T("Tải thất bại · %.60s"), current.title);
-    finished = true; busy = false;
+    if (!(finished_ok && kind == DL_VIDEO_MP4)) { finished = true; busy = false; }
     pthread_mutex_unlock(&lock);
+    if (finished_ok && kind == DL_VIDEO_MP4) {
+        set_status("Đang lưu file MP4 · %.60s", current.title);
+        char msg[400] = ""; Export_video(&current, msg, sizeof(msg));
+        pthread_mutex_lock(&lock); snprintf(status, sizeof(status), "%s", msg); finished = true; busy = false; pthread_mutex_unlock(&lock);
+    }
     Log_msg("download %s: %s", current.id, finished_ok ? "ok" : "failed");
     return NULL;
 }
-int Download_start(const VideoItem *v, int max_height) {
+int Download_start(const VideoItem *v, int max_height, int k) {
     pthread_mutex_lock(&lock);
     if (busy) { pthread_mutex_unlock(&lock); return 0; }
     if (started) pthread_join(thread, NULL);
-    current = *v; height = max_height > 0 ? max_height : 720; busy = true; started = true; finished = false;
+    current = *v; height = max_height > 0 ? max_height : 720; kind = k; busy = true; started = true; finished = false;
     snprintf(status, sizeof(status), T("Chuẩn bị tải · %.60s"), v->title);
     pthread_mutex_unlock(&lock);
     pthread_create(&thread, NULL, work, NULL);
     return 1;
+}
+bool Download_finishedMsg(char *out, size_t n) {   /* the result line, once, for a toast */
+    static bool shown = true; bool r = false;
+    pthread_mutex_lock(&lock);
+    if (busy) shown = false;
+    else if (!shown && started) { shown = true; snprintf(out, n, "%s", status); r = true; }
+    pthread_mutex_unlock(&lock);
+    return r;
 }
 bool Download_busy(void) { pthread_mutex_lock(&lock); bool b = busy; pthread_mutex_unlock(&lock); return b; }
 const char *Download_status(void) { static char copy[160]; pthread_mutex_lock(&lock); snprintf(copy, sizeof(copy), "%s", status); pthread_mutex_unlock(&lock); return copy; }

@@ -4,19 +4,23 @@
 #include "app.h"
 #include <SDL_ttf.h>
 
-/* palette (matches the approved demo) */
-#define C_BG       ((SDL_Color){0x16, 0x14, 0x1C, 255})
-#define C_SURFACE  ((SDL_Color){0x22, 0x1F, 0x2B, 255})
-#define C_RAISED   ((SDL_Color){0x2C, 0x28, 0x38, 255})
-#define C_BAR      ((SDL_Color){0x1C, 0x19, 0x24, 255})
-#define C_LINE     ((SDL_Color){0x3A, 0x35, 0x48, 255})
-#define C_INK      ((SDL_Color){0xF4, 0xEF, 0xE6, 255})
-#define C_MUTED    ((SDL_Color){0xB7, 0xAE, 0xC2, 255})
-#define C_DIM      ((SDL_Color){0x9C, 0x93, 0xA8, 255})
-#define C_TOMATO   ((SDL_Color){0xFF, 0x6A, 0x3D, 255})
-#define C_MUSTARD  ((SDL_Color){0xF7, 0xC5, 0x48, 255})
+/* palette: runtime so Cài đặt → Giao diện can switch presets (D_setTheme) */
+extern SDL_Color g_pal[10];
+#define THEMES 6
+void D_setTheme(int t);
+const char *D_themeName(int t);
+#define C_BG        (g_pal[0])
+#define C_SURFACE   (g_pal[1])
+#define C_RAISED    (g_pal[2])
+#define C_BAR       (g_pal[3])
+#define C_LINE      (g_pal[4])
+#define C_INK       (g_pal[5])
+#define C_MUTED     (g_pal[6])
+#define C_DIM       (g_pal[7])
+#define C_TOMATO    (g_pal[8])
+#define C_MUSTARD   (g_pal[9])
 #define C_BLACK    ((SDL_Color){0, 0, 0, 255})
-#define C_DARK     ((SDL_Color){0x16, 0x14, 0x1C, 255})
+#define C_DARK     (g_pal[0])
 #define RGBA(r, g, b, a) ((SDL_Color){r, g, b, a})
 
 typedef enum { F_REG, F_MED, F_SEMI, F_BOLD, F_XBOLD, F_PIXEL, F_SUB } FontFace;

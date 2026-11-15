@@ -72,7 +72,7 @@ void StreamInfo_free(StreamInfo *s) {
     free(s->hls); free(s->headers);
     for (int i = 0; i < s->ncaps; i++) free(s->caps[i].url);
     for (int i = 0; i < s->nhls; i++) { free(s->hlsv[i].url); free(s->hlsv[i].audio); }
-    free(s->hls_master);
+    free(s->hls_master); free(s->sb);
     memset(s, 0, sizeof(*s));
 }
 static char *dup0(const char *s) { return s ? strdup(s) : NULL; }
@@ -84,6 +84,7 @@ static void copy_stream(StreamInfo *dst, const StreamInfo *src) {
     for (int i = 0; i < src->ncaps; i++) dst->caps[i].url = dup0(src->caps[i].url);
     for (int i = 0; i < src->nhls; i++) { dst->hlsv[i].url = dup0(src->hlsv[i].url); dst->hlsv[i].audio = dup0(src->hlsv[i].audio); }
     dst->hls_master = dup0(src->hls_master);
+    dst->sb = dup0(src->sb);
 }
 static void hls_add(StreamInfo *s, const char *url, int h, int fps, long bw, bool split, const char *audio) {
     if (!url || h <= 0 || s->nhls >= 10) return;
@@ -418,13 +419,109 @@ static void set_format(StreamFormat *f, JSON_Object *o) {
     scopy(f->codec, sizeof(f->codec), c);
     char *dot = strchr(f->codec, '.'); if (dot) *dot = 0;
 }
+/* chapters: yt-dlp gives a list; otherwise "0:00 Intro" style lines in the description */
+static double ts_of(const char *p, int *len) {
+    int parts[3], np = 0, v = 0, digits = 0; const char *q = p;
+    for (;; q++) {
+        if (*q >= '0' && *q <= '9') { v = v * 10 + (*q - '0'); digits++; if (digits > 2 && np) return -1; }
+        else if (*q == ':' && digits && np < 2) { parts[np++] = v; v = 0; digits = 0; }
+        else break;
+    }
+    if (!np || digits != 2) return -1;
+    parts[np++] = v;
+    *len = (int)(q - p);
+    return np == 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+}
+static void parse_chapters(JSON_Object *o, StreamInfo *s) {
+    JSON_Array *ch = json_object_get_array(o, "chapters");
+    for (size_t i = 0; ch && i < json_array_get_count(ch) && s->nchap < 48; i++) {
+        JSON_Object *c = json_array_get_object(ch, i);
+        s->chap[s->nchap].t = json_object_get_number(c, "start_time");
+        scopy(s->chap[s->nchap].title, sizeof(s->chap[0].title), json_object_get_string(c, "title"));
+        s->nchap++;
+    }
+    if (s->nchap) return;
+    const char *d = s->description; double last = -1;
+    while (*d && s->nchap < 48) {
+        const char *e = strchr(d, '\n'); size_t ll = e ? (size_t)(e - d) : strlen(d);
+        char line[200]; snprintf(line, sizeof(line), "%.*s", (int)(ll < 199 ? ll : 199), d);
+        /* the timestamp may follow a bullet or bracket */
+        char *p = line; while (*p && !(*p >= '0' && *p <= '9') && p - line < 4) p++;
+        int len = 0; double t = (*p >= '0' && *p <= '9') ? ts_of(p, &len) : -1;
+        if (t >= 0 && t > last) {
+            char *ti = p + len; while (*ti == ' ' || *ti == '-' || *ti == ')' || *ti == ']' || *ti == ':' || *ti == '|' || (unsigned char)*ti == 0xE2) { if ((unsigned char)*ti == 0xE2) ti += 3; else ti++; }
+            if (!*ti) { /* title before the time: "Intro 0:00" */ *p = 0; ti = line; }
+            s->chap[s->nchap].t = t; scopy(s->chap[s->nchap].title, sizeof(s->chap[0].title), ti);
+            s->nchap++; last = t;
+        }
+        if (!e) break;
+        d = e + 1;
+    }
+    /* YouTube's rule: chapters start at 0:00 and there are at least 3 */
+    if (s->nchap < 3 || s->chap[0].t != 0) s->nchap = 0;
+}
+/* seek preview sprites: yt-dlp "sbN" formats (fragments) or the player's storyboard spec */
+static void parse_storyboard(JSON_Object *o, StreamInfo *s) {
+    const char *spec = json_object_get_string(o, "storyboard_spec");
+    double dur = json_object_get_number(o, "duration");
+    char out[2048];
+    if (spec) {
+        /* base|w#h#count#cols#rows#interval_ms#name#sigh|… ; level L = index-1 */
+        char buf[4096]; scopy(buf, sizeof(buf), spec);
+        char *lv[8]; int n = 0; char *save = NULL;
+        for (char *t = strtok_r(buf, "|", &save); t && n < 8; t = strtok_r(NULL, "|", &save)) lv[n++] = t;
+        int best = -1, bw = 0;
+        for (int i = 1; i < n; i++) { int w = atoi(lv[i]); if (w <= 200 && w > bw) { bw = w; best = i; } }
+        if (best < 0 || n < 2) return;
+        int w = 0, h = 0, cnt = 0, cols = 0, rows = 0, ms = 0; char name[32] = "", sigh[300] = "";
+        if (sscanf(lv[best], "%d#%d#%d#%d#%d#%d#%31[^#]#%299s", &w, &h, &cnt, &cols, &rows, &ms, name, sigh) < 7 || cols <= 0 || rows <= 0 || cnt <= 0) return;
+        char url[1600] = ""; size_t k = 0;
+        for (const char *p = lv[0]; *p && k + 40 < sizeof(url); p++) {
+            if (p[0] == '$' && p[1] == 'L') { k += snprintf(url + k, sizeof(url) - k, "%d", best - 1); p++; }
+            else if (p[0] == '$' && p[1] == 'N') { k += snprintf(url + k, sizeof(url) - k, "%s", name); p++; }
+            else url[k++] = *p;
+        }
+        url[k] = 0;
+        if (sigh[0]) snprintf(url + k, sizeof(url) - k, "&sigh=%s", sigh);
+        double iv = ms > 0 ? ms / 1000.0 : dur > 0 ? dur / cnt : 0;
+        if (iv <= 0) return;
+        snprintf(out, sizeof(out), "%s\t%d\t%d\t%d\t%d\t%.3f\t%d", url, w, h, cols, rows, iv, cnt);
+        free(s->sb); s->sb = strdup(out); return;
+    }
+    JSON_Array *formats = json_object_get_array(o, "formats");
+    JSON_Object *pick = NULL; int pw = 0;
+    for (size_t i = 0; formats && i < json_array_get_count(formats); i++) {
+        JSON_Object *f = json_array_get_object(formats, i);
+        const char *fid = json_object_get_string(f, "format_id");
+        if (!fid || strncmp(fid, "sb", 2)) continue;
+        int w = (int)json_object_get_number(f, "width");
+        if (w <= 200 && w > pw && json_object_get_array(f, "fragments")) { pw = w; pick = f; }
+    }
+    if (!pick) return;
+    JSON_Array *fr = json_object_get_array(pick, "fragments");
+    const char *u0 = json_object_get_string(json_array_get_object(fr, 0), "url");
+    int cols = (int)json_object_get_number(pick, "columns"), rows = (int)json_object_get_number(pick, "rows");
+    double fps = json_object_get_number(pick, "fps");
+    if (!u0 || cols <= 0 || rows <= 0 || fps <= 0) return;
+    const char *m0 = strstr(u0, "/M0.jpg"); if (!m0) m0 = strstr(u0, "/default.jpg");
+    if (!m0 || strstr(u0, "/default.jpg")) return;
+    char url[1600]; snprintf(url, sizeof(url), "%.*s/M$M.jpg%s", (int)(m0 - u0), u0, m0 + 7);
+    int cnt = (int)(dur * fps + 0.5); if (cnt <= 0) cnt = (int)json_array_get_count(fr) * cols * rows;
+    snprintf(out, sizeof(out), "%s\t%d\t%d\t%d\t%d\t%.3f\t%d", url, pw, (int)json_object_get_number(pick, "height"), cols, rows, 1.0 / fps, cnt);
+    free(s->sb); s->sb = strdup(out);
+}
 static bool parse_stream_obj(JSON_Object *o, StreamInfo *s) {
     if (!o) return false;
     memset(s, 0, sizeof(*s));
     parse_entry(o, &s->info);
     s->likes = (long long)json_object_get_number(o, "like_count");
     scopy(s->upload_date, sizeof(s->upload_date), json_object_get_string(o, "upload_date"));
-    scopy(s->description, sizeof(s->description), json_object_get_string(o, "description"));
+    /* chapters need the description's lines; the copy shown on screen is one line */
+    snprintf(s->description, sizeof(s->description), "%s", json_object_get_string(o, "description") ? json_object_get_string(o, "description") : "");
+    parse_chapters(o, s);
+    scopy(s->description, sizeof(s->description), s->description);
+    parse_storyboard(o, s);
+    if (s->nchap || s->sb) Log_msg("stream %s: %d chapters, %s seek preview", s->info.id, s->nchap, s->sb ? "with" : "no");
     JSON_Array *formats = json_object_get_array(o, "formats");
     int best_audio_score = -1, best_hls_height = -1;
     JSON_Object *header_src = NULL;
@@ -559,7 +656,12 @@ static bool do_list(int w, const Job *job, VideoList *list, char *error, size_t 
     }
     char first[16]; snprintf(first, sizeof(first), "%d", job->start + 1);
     snprintf(count, sizeof(count), "%d", job->start + job->count);
-    if (job->kind == K_SEARCH) snprintf(target, sizeof(target), "%s%d:%s", job->newest ? "ytsearchdate" : "ytsearch", job->start + job->count, job->arg);
+    if (job->kind == K_SEARCH) {
+        /* "@sp:<filters>|words" (search filters): yt-dlp only gets the words */
+        const char *q = job->arg, *bar = !strncmp(q, "@sp:", 4) ? strchr(q, '|') : NULL;
+        bool bydate = job->newest || (bar && strstr(q, "@sp:CAI"));
+        snprintf(target, sizeof(target), "%s%d:%s", bydate ? "ytsearchdate" : "ytsearch", job->start + job->count, bar ? bar + 1 : q);
+    }
     else snprintf(target, sizeof(target), "https://www.youtube.com/channel/%s/videos", job->arg);
     const char *extra[] = {"--flat-playlist", "-J", "--playlist-start", first, "--playlist-end", count, target, NULL};
     char *text = run_ytdlp(extra, 60, error, es);

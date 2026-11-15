@@ -19,4 +19,8 @@ libstdc++ (GPL-3.0 with GCC Runtime Library Exception).
 Be Vietnam Pro and VT323 fonts: SIL Open Font License 1.1.
 Optional subtitle font packs (Noto Sans KR / JP / SC / Thai, Google), downloaded by the user from github.com/google/fonts: SIL Open Font License 1.1.
 Icons: Lucide (ISC).
+shine (fixed-point MP3 encoder, 2.3.10 "Nhạc MP3"): LGPL-2.0 (shine-LGPL-2.0.txt), compiled in from
+  https://github.com/toots/shine (third_party/shine, sources unchanged).
+SponsorBlock (sponsor.ajay.app): segment data by the SponsorBlock community, CC BY-NC-SA 4.0;
+  looked up with a 4-character hash prefix of the video id. https://sponsor.ajay.app
 Mozilla CA bundle (MPL-2.0), minus one certificate Mbed TLS cannot parse.

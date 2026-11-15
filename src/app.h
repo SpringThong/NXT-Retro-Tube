@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define APP_NAME "NXT Retro Tube"
-#define APP_VERSION "2.3.9"
+#define APP_VERSION "2.3.10"
 /* scanout.c: direct panel output (Smart Pro S, when SDL cannot open the panel) */
 bool Scanout_open(int *lw, int *lh);
 SDL_Surface *Scanout_surface(void);
@@ -77,6 +77,7 @@ typedef struct {
     int duration;          /* seconds, 0 for live / unknown */
     long long views;
     bool live;
+    float watched;         /* 0..1 how far your Google account got (any device), 0 = unknown */
 } VideoItem;
 
 typedef struct {
@@ -100,8 +101,11 @@ typedef struct {
 typedef struct { char lang[24]; char name[64]; char *url; bool asr, translatable; } CaptionTrack;
 typedef struct {
     VideoItem info;
-    char description[600];
+    char description[3000];
     char upload_date[16];
+    char *sb;                 /* seek preview sprites: "url-with-$M\tw\th\tcols\trows\tinterval_s\tcount" */
+    struct { double t; char title[72]; } chap[48];   /* chapters (yt-dlp list or "0:00 Intro" lines in the description) */
+    int nchap;
     long long likes;
     StreamFormat video[MAX_FORMATS];
     int nvideo;
@@ -235,7 +239,8 @@ bool Store_saveFeed(const char *key, const VideoList *);
 bool Store_loadFeed(const char *key, VideoList *, long long *age_seconds);
 
 /* ---------- downloads ---------- */
-int Download_start(const VideoItem *, int max_height);
+int Download_start(const VideoItem *, int max_height, int kind);
+bool Download_finishedMsg(char *out, size_t n);
 bool Download_busy(void);
 const char *Download_status(void);
 void Download_tick(void);
@@ -254,10 +259,25 @@ int AudioRoute_setBottom(bool host);
 /* settings.c */
 #define KM_COUNT 10
 typedef struct { int lang, av_offset_ms, audio_out, home_mode, dac_volume; bool autoplay, prefetch, telex, bottom_dac; int keymap[KM_COUNT];
-                 int sub_mode, sub_size; char sub_lang[16]; bool ota_auto, sleep_pause, fps60; } Settings;
+                 int sub_mode, sub_size; char sub_lang[16]; bool ota_auto, sleep_pause, fps60;
+                 /* 2.3.10 */
+                 int theme;                 /* palette preset */
+                 char app_title[40];        /* shown top-left instead of "NXT Retro Tube" when set */
+                 char chip_order[64];       /* "0,1,2,…" catalog ids in display order */
+                 unsigned chip_hidden;      /* bit per catalog id */
+                 char custom_chip[4][40];   /* user keyword tabs */
+                 unsigned status_hide;      /* bit 0 battery, 1 wifi, 2 bluetooth, 3 clock, 4 DAC */
+                 int sponsor;               /* SponsorBlock: 0 off, 1 skip, 2 show only */
+                 int boost;                 /* volume boost 0..3 → 100/150/200/250 % */
+                 bool voice;                /* clear voice (speech band lift) */
+                 bool saver;                /* battery saver below 20 %: ≤480p, no prefetch */
+                 bool autodl;               /* fetch new videos of followed channels while charging on Wi-Fi */
+                 bool newbadge;             /* red dot on channels with new uploads */
+               } Settings;
 extern Settings S;
 void Account_init(void);
 bool Account_signedIn(void);
+double Account_resumeSeconds(const char *id, double duration);
 const char *Account_name(void);
 void Account_logout(void);
 void Account_startLogin(void);
@@ -284,6 +304,7 @@ bool Sys_backlightOff(void);
 bool Sys_powerAvailable(void);
 bool Sys_powerPressed(void);
 void Player_setGain(float g);
+void Player_setBoost(int level, bool voice);
 const char *Innertube_visitor(void);
 void Sys_setGovernor(bool performance);
 void Sys_cpuLevel(int level);
@@ -387,4 +408,29 @@ const char *Subs_packName(int pack);
 int Subs_packMB(int pack);
 const char *Subs_fontFor(const char *code, long *index);   /* NULL = app font */
 char *Innertube_get(const char *url, char *err, size_t en);
+/* extras.c (2.3.10) */
+typedef struct { double start, end; int cat; } SponsorSeg;
+void Sponsor_fetch(const char *id);
+int Sponsor_get(const char *id, SponsorSeg *out, int max);
+const char *Sponsor_catName(int cat);
+void Preview_set(const char *video_id, const char *spec);
+bool Preview_has(void);
+bool Preview_frame(SDL_Renderer *r, double t, SDL_Texture **tex, SDL_Rect *src);
+void Preview_dropTextures(void);
+/* export.c (2.3.10): named files in a folder you can see from a computer */
+enum { DL_VIDEO, DL_VIDEO_MP4, DL_M4A, DL_OPUS, DL_MP3, DL_KINDS };
+const char *Export_dir(void);
+bool Export_video(const VideoItem *v, char *msg, size_t n);              /* downloads/<id>.mp4 + .m4a -> "<title>.mp4" */
+bool Export_audio(const VideoItem *v, int kind, const char *src, char *msg, size_t n);   /* -> .m4a / .opus / .mp3 */
+int Export_all(char *msg, size_t n);
+int Import_takeout(char *msg, size_t n);
+/* store.c: local playlists */
+int PL_count(void);
+const char *PL_name(int i);
+const VideoList *PL_list(int i);
+int PL_create(const char *name);
+void PL_delete(int i);
+bool PL_has(int i, const char *id);
+bool PL_toggle(int i, const VideoItem *v);
+void PL_save(void);
 #endif

@@ -389,6 +389,52 @@ static int secs_of(const char *t) {
     for (; t && *t; t++) { if (*t >= '0' && *t <= '9') { part = part * 10 + (*t - '0'); any = true; } else if (*t == ':') { total = total * 60 + part; part = 0; } else if (any) break; }
     return any ? total * 60 + part : 0;
 }
+/* "continue watching": how far the account got in a video, from the red bar YouTube draws on its thumbnail
+ * (TV/web: thumbnailOverlayResumePlaybackRenderer.percentDurationWatched, new UI: progress bar startPercent) */
+static double pct_of(JSON_Value *v, int depth) {
+    JSON_Object *o = json_value_get_object(v);
+    if (depth > 10) return 0;
+    if (o) {
+        if (json_object_has_value_of_type(o, "percentDurationWatched", JSONNumber)) return json_object_get_number(o, "percentDurationWatched");
+        if (json_object_has_value_of_type(o, "startPercent", JSONNumber)) return json_object_get_number(o, "startPercent");
+        for (size_t i = 0; i < json_object_get_count(o); i++) {
+            const char *k = json_object_get_name(o, i);
+            /* only look where overlays live: skip titles, menus and endpoints */
+            if (!strstr(k, "verlay") && !strstr(k, "header") && !strstr(k, "Header") && !strstr(k, "contentImage") && !strstr(k, "thumbnail") &&
+                !strstr(k, "Renderer") && !strstr(k, "ViewModel") && !strstr(k, "progress") && !strstr(k, "Progress")) continue;
+            double p = pct_of(json_object_get_value_at(o, i), depth + 1);
+            if (p > 0) return p;
+        }
+        return 0;
+    }
+    JSON_Array *a = json_value_get_array(v);
+    for (size_t i = 0; a && i < json_array_get_count(a); i++) { double p = pct_of(json_array_get_value(a, i), depth + 1); if (p > 0) return p; }
+    return 0;
+}
+#define RESUME_N 400
+static struct { char id[12]; float f; } resume[RESUME_N];
+static int resume_next;
+static pthread_mutex_t rlock = PTHREAD_MUTEX_INITIALIZER;
+static void note_resume(const char *id, double pct) {
+    if (!id || strlen(id) != 11 || pct <= 0) return;
+    pthread_mutex_lock(&rlock);
+    int k = -1;
+    for (int i = 0; i < RESUME_N; i++) if (!strcmp(resume[i].id, id)) { k = i; break; }
+    if (k < 0) { k = resume_next; resume_next = (resume_next + 1) % RESUME_N; snprintf(resume[k].id, sizeof(resume[k].id), "%s", id); }
+    resume[k].f = (float)(pct / 100.0);
+    pthread_mutex_unlock(&rlock);
+}
+double Account_resumeSeconds(const char *id, double duration) {
+    if (!id || duration <= 0) return 0;
+    float f = 0;
+    pthread_mutex_lock(&rlock);
+    for (int i = 0; i < RESUME_N; i++) if (!strcmp(resume[i].id, id)) { f = resume[i].f; break; }
+    pthread_mutex_unlock(&rlock);
+    double p = f * duration;
+    if (f <= 0 || f >= 0.97 || p < 15 || p > duration - 20) return 0;
+    return p - 3;   /* a little before, so you catch the sentence you stopped in */
+}
+static double cur_pct;   /* set by take_* right before add_item (feed walk runs under flock) */
 static void add_item(VideoList *out, const char *id, const char *title, const char *channel, const char *cid, const char *dur, const char *views, bool live) {
     if (!id || strlen(id) != 11 || !title || !*title) return;
     for (int i = 0; i < out->count; i++) if (!strcmp(out->items[i].id, id)) return;
@@ -399,6 +445,7 @@ static void add_item(VideoList *out, const char *id, const char *title, const ch
     it.duration = live ? 0 : secs_of(dur);
     it.views = count_of(views);
     it.live = live;
+    if (cur_pct > 0 && !live) { it.watched = (float)(cur_pct / 100.0); note_resume(id, cur_pct); }
     VideoList_add(out, &it);
 }
 static void take_tile(JSON_Object *t, VideoList *out) {
@@ -422,6 +469,7 @@ static void take_tile(JSON_Object *t, VideoList *out) {
         text_of(json_object_get_object(ts, "text"), dur, sizeof(dur));
     }
     /* line 1 is the channel, line 2 "views • when" (when both exist) */
+    cur_pct = pct_of(json_object_get_value(t, "header"), 0);
     add_item(out, id, title, l1[0] ? l0 : "", NULL, dur, l1[0] ? l1 : l0, live);
 }
 static void take_web(JSON_Object *v, VideoList *out) {
@@ -435,6 +483,7 @@ static void take_web(JSON_Object *v, VideoList *out) {
     text_of(json_object_get_object(v, "lengthText"), dur, sizeof(dur));
     text_of(json_object_get_object(v, "viewCountText"), views, sizeof(views));
     bool live = !dur[0] && (strstr(views, "watching") || strstr(views, "đang xem"));
+    cur_pct = pct_of(json_object_get_value(v, "thumbnailOverlays"), 0);
     add_item(out, json_object_get_string(v, "videoId"), title, ch, cid, dur, views, live);
 }
 static void take_lockup(JSON_Object *l, VideoList *out) {
@@ -458,6 +507,7 @@ static void take_lockup(JSON_Object *l, VideoList *out) {
         if (t) snprintf(dur, sizeof(dur), "%s", t);
         if (st && strstr(st, "LIVE")) live = true;
     }
+    cur_pct = pct_of(json_object_get_value(l, "contentImage"), 0);
     add_item(out, json_object_get_string(l, "contentId"), title, ch, NULL, dur, views, live);
 }
 /* the list's own "next page" token wins over a shelf's (horizontal) one */

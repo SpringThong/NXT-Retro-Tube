@@ -21,6 +21,7 @@ cd $D/ffmpeg-n6.1.6
   --enable-decoder=h264,hevc,vp9,vp8,aac,aac_latm,opus,mp3,mp3float,vorbis,mjpeg \
   --enable-parser=h264,hevc,vp9,vp8,aac,aac_latm,opus,mpegaudio,vorbis \
   --enable-bsf=h264_mp4toannexb,hevc_mp4toannexb,vp9_superframe_split \
+  --enable-muxer=mp4,ipod,mov,ogg,opus \
   --enable-swresample
 make -j2
 make install

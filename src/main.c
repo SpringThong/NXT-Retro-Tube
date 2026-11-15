@@ -1,6 +1,7 @@
 /* NXT Retro Tube — screens, input and app lifecycle.
  * SPDX-License-Identifier: GPL-3.0-only */
 #include "app.h"
+#include "parson.h"
 #include "draw.h"
 #ifndef NXT_TUBE_PW
 #include <SDL2/SDL_image.h>
@@ -44,16 +45,50 @@ static Uint32 repeat_at[K_COUNT];
 
 /* ---------- state ---------- */
 typedef enum { SC_HOME, SC_SEARCH, SC_WATCH, SC_FULL, SC_LIBRARY, SC_SETTINGS, SC_KIDS } Screen;
-typedef enum { PANEL_NONE, PANEL_QUALITY, PANEL_SPEED, PANEL_OPTIONS } Panel;
-#define CHIPS 9
-static const char *CHIP_LABEL[CHIPS] = {"Dành cho bạn", "Đăng ký", "Âm nhạc", "Game retro", "Chill & Lofi", "Hoạt hình", "Trực tiếp", "Bóng đá", "Mới tải lên"};
-static const char *CHIP_QUERY[CHIPS] = {"video thịnh hành việt nam", "video mới nhất hôm nay", "nhạc việt mới nhất", "retro game handheld", "lofi chill", "phim hoạt hình", "radio 24/7 live", "bóng đá highlights", "việt nam"};
-static const bool CHIP_NEWEST[CHIPS] = {false, false, false, false, false, false, false, false, true};
+typedef enum { PANEL_NONE, PANEL_QUALITY, PANEL_SPEED, PANEL_OPTIONS, PANEL_DOWNLOAD, PANEL_PLAYLIST, PANEL_CHAPTERS, PANEL_FILTER } Panel;
+/* Home tabs ("chips"): a catalog the user can reorder / hide (Cài đặt → Tùy biến), plus up to 4 tabs
+ * of their own keywords. A.tab is the position in the visible row; chip_ids[] maps it to the catalog. */
+enum { CH_FORYOU, CH_SUBS, CH_CONT, CH_MUSIC, CH_RETRO, CH_CHILL, CH_CARTOON, CH_LIVE, CH_FOOTBALL, CH_NEW, CH_CUSTOM0, CH_N = CH_CUSTOM0 + 4 };
+static const char *CHIPDEF_LABEL[CH_CUSTOM0] = {"Dành cho bạn", "Đăng ký", "Xem tiếp", "Âm nhạc", "Game retro", "Chill & Lofi", "Hoạt hình", "Trực tiếp", "Bóng đá", "Mới tải lên"};
+static const char *CHIPDEF_QUERY[CH_CUSTOM0] = {"video thịnh hành việt nam", "video mới nhất hôm nay", "", "nhạc việt mới nhất", "retro game handheld", "lofi chill", "phim hoạt hình", "radio 24/7 live", "bóng đá highlights", "việt nam"};
+#define KCHIPS 9
+static int nchips = CH_CUSTOM0, chip_ids[CH_N];
+#define CHIPS nchips
 /* kids mode home: tab 0 and the last tab follow the approved channels when there are some */
-static const char *KIDS_LABEL[CHIPS] = {"Cho bé", "Bài hát cho bé", "Hoạt hình", "Nhạc thiếu nhi", "Học tiếng Anh", "Truyện cổ tích", "Khoa học vui", "Vận động cho bé", "Kênh đã duyệt"};
-static const char *KIDS_QUERY[CHIPS] = {"phim hoạt hình cho bé", "bài hát thiếu nhi hay nhất", "phim hoạt hình thiếu nhi", "nhạc thiếu nhi vui nhộn", "học tiếng anh cho bé", "truyện cổ tích việt nam", "khoa học vui cho bé", "bé tập thể dục vận động", "phim hoạt hình cho bé"};
-static const char *const *chip_labels(void) { return K.enabled ? KIDS_LABEL : CHIP_LABEL; }
-static bool chip_newest(int t) { return K.enabled ? false : CHIP_NEWEST[t]; }
+static const char *KIDS_LABEL[KCHIPS] = {"Cho bé", "Bài hát cho bé", "Hoạt hình", "Nhạc thiếu nhi", "Học tiếng Anh", "Truyện cổ tích", "Khoa học vui", "Vận động cho bé", "Kênh đã duyệt"};
+static const char *KIDS_QUERY[KCHIPS] = {"phim hoạt hình cho bé", "bài hát thiếu nhi hay nhất", "phim hoạt hình thiếu nhi", "nhạc thiếu nhi vui nhộn", "học tiếng anh cho bé", "truyện cổ tích việt nam", "khoa học vui cho bé", "bé tập thể dục vận động", "phim hoạt hình cho bé"};
+static int chip_id(int pos) { return pos >= 0 && pos < nchips ? chip_ids[pos] : 0; }
+static const char *chipdef_label(int id) { return id >= CH_CUSTOM0 ? S.custom_chip[id - CH_CUSTOM0] : CHIPDEF_LABEL[id]; }
+static const char *chip_label(int pos) { return K.enabled ? KIDS_LABEL[pos % KCHIPS] : chipdef_label(chip_id(pos)); }
+static bool chip_newest(int t) { return !K.enabled && chip_id(t) == CH_NEW; }
+/* the visible row, from the saved order ("0,1,2,…"), hidden set and custom keywords */
+static int chip_full_order(int *order) {
+    bool seen[CH_N] = {0}; int n = 0;
+    for (const char *p = S.chip_order; *p; ) {
+        int id = atoi(p);
+        if (id >= 0 && id < CH_N && !seen[id]) { seen[id] = true; order[n++] = id; }
+        while (*p && *p != ',') p++;
+        if (*p == ',') p++;
+    }
+    for (int id = 0; id < CH_N; id++) if (!seen[id]) order[n++] = id;
+    return n;
+}
+static void chip_save_order(const int *order) {
+    char *p = S.chip_order; size_t left = sizeof(S.chip_order);
+    for (int i = 0; i < CH_N && left > 4; i++) { int w = snprintf(p, left, i ? ",%d" : "%d", order[i]); p += w; left -= w; }
+}
+static void chips_build(void) {
+    if (K.enabled) { nchips = KCHIPS; for (int i = 0; i < KCHIPS; i++) chip_ids[i] = i; return; }
+    int order[CH_N], n = chip_full_order(order);
+    nchips = 0;
+    for (int i = 0; i < n; i++) {
+        int id = order[i];
+        if (S.chip_hidden & (1u << id)) continue;
+        if (id >= CH_CUSTOM0 && !S.custom_chip[id - CH_CUSTOM0][0]) continue;
+        chip_ids[nchips++] = id;
+    }
+    if (!nchips) chip_ids[nchips++] = CH_FORYOU;
+}
 static const char *QUALITY_ID[] = {"auto", "1080", "720p60", "720", "480", "360", "audio"};
 static const char *QUALITY_LABEL[] = {"Tự động", "1080p HD", "720p60 HD", "720p HD", "480p", "360p", "Chỉ âm thanh"};
 static const char *QUALITY_NOTE[] = {"HD 720p · 60 khung/giây nếu video có", "Nặng máy · màn 1024×768 không nét hơn 720p", "Mượt hơn cho game, thể thao", "30 khung/giây · nhẹ máy nhất", "Tiết kiệm dữ liệu", "Khi Wi-Fi yếu", "Tắt hình, tiết kiệm pin"};
@@ -79,7 +114,8 @@ typedef struct {
     char err[160];
 } Feed;
 
-enum { SET_LANG, SET_QUALITY, SET_AUTOPLAY, SET_PREFETCH, SET_SUBS, SET_SUBLANG, SET_SUBSIZE, SET_TELEX, SET_AVSYNC, SET_AUDIO, SET_BOTTOM, SET_FPS60, SET_SLEEP_ACT, SET_OTA_AUTO, SET_HOME, SET_ACCOUNT, SET_KEYS, SET_KIDS, SET_UPDATE,
+enum { SET_LANG, SET_THEME, SET_QUALITY, SET_AUTOPLAY, SET_PREFETCH, SET_SAVER, SET_SUBS, SET_SUBLANG, SET_SUBSIZE, SET_SPONSOR, SET_BOOST, SET_VOICE, SET_TELEX, SET_AVSYNC, SET_AUDIO, SET_BOTTOM, SET_FPS60, SET_SLEEP_ACT, SET_OTA_AUTO, SET_NEWBADGE, SET_AUTODL, SET_HOME,
+       SET_CUSTOM, SET_ACCOUNT, SET_IMPORT, SET_EXPORT, SET_KEYS, SET_KIDS, SET_UPDATE,
        SET_CACHE, SET_HISTORY, SET_SEARCHES, SET_VERSION, SET_ABOUT, SET_ICON, SET_COUNT };
 #ifdef NXT_TUBE_ROM_NXREDUX
 #define SET_ROWS SET_COUNT          /* Tools-menu icon: NX Redux launcher only */
@@ -93,7 +129,7 @@ static struct {
     Screen screen;
     /* home */
     int tab, sel, focus, navSel; float scroll;
-    Feed feed[CHIPS];
+    Feed feed[CH_N];
     /* search */
     int subOverride;          /* this video only: 0 settings, 1 translate, 2 original, 3 off */
     Uint32 osdAskAt, osdGateUntil, homeUpAt; bool osdAsk, osdAskOpen; bool restart; int otaToldState;
@@ -106,6 +142,7 @@ static struct {
     int libTab, libSel; float lscroll;
     /* settings */
     bool loginPanel; int loginState, loginSecs; char loginCode[32], loginUrl[160], loginMsg[200];
+    bool custPage; int custSel; float custScroll; int textFor;   /* textFor: keyboard types 1 the app title, 2..5 a keyword tab */
     int setSel; float setScroll; bool keyPage; int keySelRow; int capture; Uint32 captureUntil; int confirmRow; Uint32 confirmUntil;
     char iconStatus[160]; int iconState;
     /* playback */
@@ -117,6 +154,15 @@ static struct {
     bool localPlayback;
     Uint32 lastHistory;
     bool endedHandled;
+    /* 2.3.10 player extras */
+    int repeat;                 /* 0 off, 1 this video, 2 the list, 3 shuffle */
+    double abA, abB;            /* A–B loop (-1 = unset) */
+    bool keyLock; int lockTaps; Uint32 lockTapAt;
+    int prevQuality;            /* quality before "music mode" */
+    unsigned sponsorDone; Uint32 sponsorToastAt;
+    int panelFirst;             /* first visible row of a long panel */
+    int fDate, fDur, fSort; bool fLive;   /* search filters */
+    int ncJob, ncIdx; Uint32 ncNext; int ncNew; int autodlToday, autodlDay;
     /* overlays */
     bool osd; Uint32 osdUntil; Panel panel; int panelSel; bool stats;
     char toast[200]; Uint32 toastUntil; char flash[48]; Uint32 flashUntil;
@@ -195,6 +241,8 @@ static const char *KN(Key k) { for (int i = 0; i < KM_COUNT; i++) if (KM_KEYS[i]
 static bool starts_avc(const char *c) { return !strncmp(c, "avc1", 4) || !strcmp(c, "h264"); }
 int g_screen_w = 1024;
 static bool sps_scan;          /* SDL has no panel driver: draw on the CPU, scanout.c shows the frames */
+static bool saver_active(void);
+static const char *search_q(const char *q);
 static int pick_video(void) {
     StreamInfo *s = &A.stream;
     if (!s->nvideo) return -1;
@@ -208,6 +256,7 @@ static int pick_video(void) {
 #endif
     /* CPU drawing (Smart Pro S stock): at most 720p, 30 fps when there is a choice */
     if (sps_scan) { if (want > 720) want = 720; allow60 = !strcmp(q, "720p60"); }
+    if (saver_active()) { if (want > 480) want = 480; allow60 = false; }   /* low battery: cool and long-lasting */
     int best = -1, best_key = -1;
     for (int i = 0; i < s->nvideo; i++) {
         StreamFormat *f = &s->video[i];
@@ -278,6 +327,7 @@ static void start_player(double start, bool keep_position) {
         src.audio_only = audio_only;
     } else {
         StreamInfo *s = &A.stream;
+        Preview_set(A.cur.id, s->sb);
         src.headers = s->headers; src.user_agent = s->user_agent;
         src.live = s->info.live;
         int vi = pick_video();
@@ -315,6 +365,18 @@ static void start_player(double start, bool keep_position) {
     if (keep_position) Player_switchVideo(&src); else { Player_open(&src); subs_restart(); }
     Player_setSpeed(SPEEDS[A.speedIx]);
 }
+/* where to start: your own spot on this handheld, else where your Google account stopped (phone, web, TV) */
+static double resume_at(const VideoItem *v) {
+    double p = Store_resumePosition(v->id);
+    if (p > 0 || v->live) return p;
+    int dur = v->duration;
+    if (dur <= 0 && !strcmp(A.cur.id, v->id)) dur = A.cur.duration;
+    p = Account_resumeSeconds(v->id, dur);
+    if (p <= 0 && v->watched > 0.02f && v->watched < 0.97f && dur > 60) p = v->watched * dur - 3;
+    if (p < 15) p = 0;
+    if (p > 0) toast("Xem tiếp từ %d:%02d (đã xem trên thiết bị khác)", (int)p / 60, (int)p % 60);
+    return p;
+}
 static void open_video(const VideoItem *v, const VideoList *from, int index) {
     if (!Kids_allowed(v)) { toast("Chế độ trẻ em: video này không được xem"); return; }
     if (K.enabled && Kids_lockReason()) { A.kidsLock = Kids_lockReason(); return; }
@@ -324,6 +386,9 @@ static void open_video(const VideoItem *v, const VideoList *from, int index) {
     StreamInfo_free(&A.stream); A.streamReady = false;
     if (A.resolveJob) { Yt_forget(A.resolveJob); A.resolveJob = 0; }
     A.cur = *v; A.hasCur = true; A.watchErr[0] = 0;
+    A.abA = A.abB = -1; A.sponsorDone = 0; A.keyLock = false;
+    Preview_set(NULL, NULL);
+    if (S.sponsor && !v->live) Sponsor_fetch(v->id);
     if (from && from != &A.queue) {
         VideoList_copy(&A.queue, from);
         if (A.moreJob) { Yt_forget(A.moreJob); A.moreJob = 0; }
@@ -333,8 +398,8 @@ static void open_video(const VideoItem *v, const VideoList *from, int index) {
     A.watchFocus = 0; A.nextSel = 0; A.panel = PANEL_NONE; A.osd = true; A.osdUntil = SDL_GetTicks() + 3000;
     A.localPlayback = Store_hasDownload(v->id) && !v->live;
     A.lastHistory = SDL_GetTicks();
-    if (A.localPlayback) { A.streamReady = true; start_player(Store_resumePosition(v->id), false); return; }
-    if (Yt_cachedStream(v->id, &A.stream)) { A.streamReady = true; A.cur = A.stream.info.id[0] ? A.stream.info : *v; start_player(Store_resumePosition(v->id), false); return; }
+    if (A.localPlayback) { A.streamReady = true; start_player(resume_at(v), false); return; }
+    if (Yt_cachedStream(v->id, &A.stream)) { A.streamReady = true; A.cur = A.stream.info.id[0] ? A.stream.info : *v; start_player(resume_at(v), false); return; }
     A.resolveJob = Yt_resolve(v->id, true); A.resolveSince = SDL_GetTicks();
 }
 static void play_index(int i) {
@@ -574,19 +639,24 @@ static void feed_queries(int tab, Feed *f) {
     f->nq = 0;
     if (K.enabled) {
         /* kids: the approved channels' own videos, or child-friendly searches (Restricted Mode on) */
-        if ((tab == 0 || tab == CHIPS - 1 || K.approved_only) && K.napproved)
+        if ((tab == 0 || tab == KCHIPS - 1 || K.approved_only) && K.napproved)
             for (int i = 0; i < K.napproved && f->nq < MAXQ; i++) snprintf(f->q[f->nq++], 128, "@ch:%s", K.approved[i].id);
         if (!f->nq) snprintf(f->q[f->nq++], 128, "%s", KIDS_QUERY[tab]);
         return;
     }
-    /* signed in: YouTube's own home for you and your subscriptions */
-    if (Account_signedIn() && ((tab == 0 && S.home_mode == 0) || tab == 1)) { snprintf(f->q[f->nq++], 128, "@yt:%s", tab ? "FEsubscriptions" : "FEwhat_to_watch"); return; }
-    if (tab == 1) {   /* not signed in: the newest videos of the channels you follow here */
+    int id = chip_id(tab);
+    /* signed in: YouTube's own home for you, your subscriptions, and what you watched anywhere */
+    if (Account_signedIn() && ((id == CH_FORYOU && S.home_mode == 0) || id == CH_SUBS || id == CH_CONT)) {
+        snprintf(f->q[f->nq++], 128, "@yt:%s", id == CH_SUBS ? "FEsubscriptions" : id == CH_CONT ? "FEhistory" : "FEwhat_to_watch"); return;
+    }
+    if (id == CH_CONT) { snprintf(f->q[f->nq++], 128, "@local:continue"); return; }
+    if (id >= CH_CUSTOM0) { snprintf(f->q[f->nq++], 128, "%s", S.custom_chip[id - CH_CUSTOM0]); return; }
+    if (id == CH_SUBS) {   /* not signed in: the newest videos of the channels you follow here */
         const VideoList *ch = Store_channels();
         for (int i = 0; i < ch->count && f->nq < MAXQ; i++) if (ch->items[i].channel_id[0]) snprintf(f->q[f->nq++], 128, "@ch:%s", ch->items[i].channel_id);
         if (f->nq) return;
     }
-    if (tab == 0 && S.home_mode == 0) {
+    if (id == CH_FORYOU && S.home_mode == 0) {
         /* recommendations from what you searched and watched */
         const VideoList *rec = Store_recentSearches();
         for (int i = 0; i < rec->count && f->nq < 4; i++) snprintf(f->q[f->nq++], 128, "%s", rec->items[i].title);
@@ -596,13 +666,22 @@ static void feed_queries(int tab, Feed *f) {
             if (!dup) snprintf(f->q[f->nq++], 128, "%s", ch[i]);
         }
     }
-    if (!f->nq) snprintf(f->q[f->nq++], 128, "%s", CHIP_QUERY[tab]);
+    if (!f->nq) snprintf(f->q[f->nq++], 128, "%s", CHIPDEF_QUERY[id < CH_CUSTOM0 ? id : 0]);
 }
 static bool feed_busy(Feed *f) { for (int i = 0; i < f->njobs; i++) if (f->jobs[i]) return true; return false; }
 static void request_page(int tab, bool priority) {
     Feed *f = &A.feed[tab];
     if (feed_busy(f) || f->exhausted) return;
     if (f->page == 0) feed_queries(tab, f);
+    if (f->nq == 1 && !strcmp(f->q[0], "@local:continue")) {
+        /* not signed in: videos started here and not finished */
+        const VideoList *h = Store_history();
+        VideoList_clear(&f->list); f->replacing = false;
+        for (int i = 0; i < h->count; i++) { double p = Store_historyProgress(i); if (p > 0.02 && p < 0.95) { VideoItem it = h->items[i]; it.watched = (float)p; VideoList_add(&f->list, &it); } }
+        f->exhausted = true; f->page = 1;
+        if (!f->list.count) snprintf(f->err, sizeof(f->err), "%s", T("Chưa có video xem dở · đăng nhập Google để thấy cả video xem dở trên điện thoại / máy tính"));
+        return;
+    }
     int per = f->nq > 1 ? 8 : PAGE_ONE;
     f->njobs = 0; f->added = 0; f->err[0] = 0;
     for (int i = 0; i < f->nq; i++)
@@ -610,10 +689,24 @@ static void request_page(int tab, bool priority) {
                                                           : Yt_searchPage(f->q[i], f->page * per, per, chip_newest(tab), priority);
     f->page++;
 }
+static void feed_key(int tab, char *key, size_t n) {
+    int cid = chip_id(tab);
+    if (K.enabled) { snprintf(key, n, "ktb%d", tab); return; }
+    if (cid >= CH_CUSTOM0) {
+        unsigned h = 2166136261u; for (const char *c = S.custom_chip[cid - CH_CUSTOM0]; *c; c++) h = (h ^ (unsigned char)*c) * 16777619u;
+        snprintf(key, n, "cu%08x", h); return;
+    }
+    snprintf(key, n, "ch%d%s%s", cid, cid == CH_FORYOU && S.home_mode == 0 ? "r" : "", cid <= CH_CONT && Account_signedIn() ? "a" : "");
+}
 static void load_feed(int tab, bool force) {
     Feed *f = &A.feed[tab];
     if (feed_busy(f)) return;
-    char key[24]; snprintf(key, sizeof(key), "%stb%d%s%s", K.enabled ? "k" : "", tab, tab == 0 && S.home_mode == 0 ? "r" : "", !K.enabled && tab <= 1 && Account_signedIn() ? "a" : "");
+    int cid = chip_id(tab);
+    if (!K.enabled && cid == CH_CONT) {
+        if (!Account_signedIn()) { f->page = 0; f->exhausted = false; f->tried = true; request_page(tab, true); return; }
+        force = true;   /* watch history moves every time you watch something, here or elsewhere */
+    }
+    char key[48]; feed_key(tab, key, sizeof(key));
     long long age = 0;
     if (!f->list.count) { Store_loadFeed(key, &f->list, &age); Kids_filter(&f->list); }
     if (force || !f->list.count || age > 1800 || !f->tried) {
@@ -622,7 +715,9 @@ static void load_feed(int tab, bool force) {
     }
 }
 static void reset_feeds(void) {
-    for (int t = 0; t < CHIPS; t++) { Feed *f = &A.feed[t]; for (int i = 0; i < f->njobs; i++) if (f->jobs[i]) Yt_forget(f->jobs[i]); VideoList_clear(&f->list); memset(f, 0, sizeof(*f)); }
+    for (int t = 0; t < CH_N; t++) { Feed *f = &A.feed[t]; for (int i = 0; i < f->njobs; i++) if (f->jobs[i]) Yt_forget(f->jobs[i]); VideoList_clear(&f->list); memset(f, 0, sizeof(*f)); }
+    chips_build();
+    if (A.tab >= nchips) A.tab = 0;
     A.sel = 0; A.scroll = 0;
 }
 static void more_results(void);
@@ -647,7 +742,7 @@ static void poll_jobs(void) {
             }
         }
         if (any && !feed_busy(f)) {
-            if (f->page == 1 && f->list.count && !f->replacing) { char key[16]; snprintf(key, sizeof(key), "%stab%d%s", K.enabled ? "k" : "", t, t == 0 && S.home_mode == 0 ? "r" : ""); Store_saveFeed(key, &f->list); }
+            if (f->page == 1 && f->list.count && !f->replacing) { char key[48]; feed_key(t, key, sizeof(key)); Store_saveFeed(key, &f->list); }
             if (f->page > 1 && f->added == 0 && !f->err[0]) f->exhausted = true;
             f->replacing = false;
         }
@@ -674,7 +769,7 @@ static void poll_jobs(void) {
                 if (!A.cur.title[0]) A.cur = keep;
                 if (!A.cur.channel_id[0]) snprintf(A.cur.channel_id, sizeof(A.cur.channel_id), "%s", keep.channel_id);
                 if (!quality_available(A.quality) && strcmp(QUALITY_ID[A.quality], "audio")) A.quality = 0;
-                start_player(Store_resumePosition(A.cur.id), false);
+                start_player(resume_at(&A.cur), false);
             }
             A.resolveJob = 0;
         } else if (s == JOB_FAILED) { snprintf(A.watchErr, sizeof(A.watchErr), "%s", Yt_error(A.resolveJob)); Yt_forget(A.resolveJob); A.resolveJob = 0; }
@@ -683,6 +778,7 @@ static void poll_jobs(void) {
 
 /* ---------- navigation ---------- */
 static const VideoList *library_list(void) {
+    if (A.libTab >= 4) return PL_list(A.libTab - 4);
     return A.libTab == 0 ? Store_history() : A.libTab == 1 ? Store_later() : A.libTab == 2 ? Store_channels() : Store_downloads();
 }
 static int current_section(void) {
@@ -705,7 +801,7 @@ static void go_section(int s) {
         case 3: A.screen = SC_LIBRARY; if (A.libTab == 2) A.libTab = 0; A.libSel = 0; A.lscroll = 0; break;
         case 4:
             if (K.enabled && !A.settingsUnlocked) { pin_open(PIN_SETTINGS); break; }
-            A.screen = SC_SETTINGS; A.keyPage = false; A.capture = -1; icon_state(); break;
+            A.screen = SC_SETTINGS; A.keyPage = false; A.custPage = false; A.capture = -1; icon_state(); break;
     }
     if ((s + 5) % 5 != 4) A.settingsUnlocked = false;
 }
@@ -777,7 +873,7 @@ static void run_search(const char *q) {
     Store_addSearch(s); Store_save();
     VideoList_clear(&A.found); A.searchErr[0] = 0; A.foundAppend = false; A.foundEnd = false;
     if (A.searchJob) Yt_forget(A.searchJob);
-    A.searchJob = Yt_searchPage(s, 0, PAGE_ONE, false, true);
+    A.searchJob = Yt_searchPage(search_q(s), 0, PAGE_ONE, false, true);
     snprintf(A.lastQuery, sizeof(A.lastQuery), "%s", s);
     snprintf(A.resultTitle, sizeof(A.resultTitle), T("Kết quả cho “%s”"), s); A.channelView = false;
     A.screen = SC_SEARCH; A.results = true; A.resultSel = 0; A.rscroll = 0;
@@ -786,9 +882,106 @@ static void more_results(void) {
     if (A.searchJob || A.foundEnd || !A.found.count) return;
     A.foundAppend = true;
     if (A.channelView) A.searchJob = Yt_channelPage(A.channelId, A.found.count, 20);
-    else A.searchJob = Yt_searchPage(A.lastQuery, A.found.count, 20, false, true);
+    else A.searchJob = Yt_searchPage(search_q(A.lastQuery), A.found.count, 20, false, true);
+}
+/* ---------- new uploads of followed channels (badge + optional download while charging) ---------- */
+#define NC_MAX 500
+static struct { char cid[40], latest[16], seen[16]; int fresh; } nc[NC_MAX];
+static int nnc; static bool nc_loaded, nc_dirty;
+static void nc_path(char *p, size_t n) { snprintf(p, n, "%s/channel-news.json", paths.data); }
+static void nc_load(void) {
+    if (nc_loaded) return;
+    nc_loaded = true;
+    char p[1300]; nc_path(p, sizeof(p));
+    JSON_Value *r = json_parse_file(p); JSON_Array *a = json_value_get_array(r);
+    for (size_t i = 0; a && i < json_array_get_count(a) && nnc < NC_MAX; i++) {
+        JSON_Object *o = json_array_get_object(a, i); const char *c = json_object_get_string(o, "c");
+        if (!c) continue;
+        snprintf(nc[nnc].cid, 40, "%s", c);
+        snprintf(nc[nnc].latest, 16, "%s", json_object_get_string(o, "l") ? json_object_get_string(o, "l") : "");
+        snprintf(nc[nnc].seen, 16, "%s", json_object_get_string(o, "s") ? json_object_get_string(o, "s") : "");
+        nc[nnc].fresh = (int)json_object_get_number(o, "n"); nnc++;
+    }
+    json_value_free(r);
+}
+static void nc_save(void) {
+    if (!nc_dirty) return;
+    nc_dirty = false;
+    JSON_Value *r = json_value_init_array();
+    for (int i = 0; i < nnc; i++) {
+        JSON_Value *v = json_value_init_object(); JSON_Object *o = json_value_get_object(v);
+        json_object_set_string(o, "c", nc[i].cid); json_object_set_string(o, "l", nc[i].latest); json_object_set_string(o, "s", nc[i].seen); json_object_set_number(o, "n", nc[i].fresh);
+        json_array_append_value(json_value_get_array(r), v);
+    }
+    char p[1300], t[1360]; nc_path(p, sizeof(p)); snprintf(t, sizeof(t), "%s.tmp", p);
+    if (json_serialize_to_file(r, t) == JSONSuccess) rename(t, p);
+    json_value_free(r);
+}
+static int nc_find(const char *cid, bool add) {
+    nc_load();
+    for (int i = 0; i < nnc; i++) if (!strcmp(nc[i].cid, cid)) return i;
+    if (!add || nnc >= NC_MAX) return -1;
+    memset(&nc[nnc], 0, sizeof(nc[0])); snprintf(nc[nnc].cid, 40, "%s", cid); return nnc++;
+}
+static int channel_new(const char *cid) { if (!S.newbadge || !cid || !*cid) return 0; int i = nc_find(cid, false); return i >= 0 ? nc[i].fresh : 0; }
+static int channels_new_total(void) {
+    if (!S.newbadge) return 0;
+    const VideoList *ch = Store_channels(); int t = 0;
+    for (int i = 0; i < ch->count; i++) t += channel_new(ch->items[i].channel_id);
+    return t;
+}
+static void channel_seen(const char *cid) {
+    int i = nc_find(cid, false);
+    if (i >= 0 && (nc[i].fresh || strcmp(nc[i].seen, nc[i].latest))) { snprintf(nc[i].seen, 16, "%s", nc[i].latest); nc[i].fresh = 0; nc_dirty = true; nc_save(); }
+}
+static void newvideo_tick(Uint32 now) {
+    if (!S.newbadge && !S.autodl) return;
+    if (A.ncJob) {
+        JobState js = Yt_state(A.ncJob);
+        if (js != JOB_DONE && js != JOB_FAILED) return;
+        VideoList l = {0};
+        if (js == JOB_DONE && Yt_takeList(A.ncJob, &l) && l.count) {
+            int i = A.ncIdx < Store_channels()->count ? nc_find(Store_channels()->items[A.ncIdx].channel_id, true) : -1;
+            if (i >= 0) {
+                int fresh = 0;
+                if (!nc[i].seen[0]) snprintf(nc[i].seen, 16, "%s", l.items[0].id);   /* first check: nothing is "new" yet */
+                else { fresh = l.count; for (int k = 0; k < l.count; k++) if (!strcmp(l.items[k].id, nc[i].seen)) { fresh = k; break; } }
+                if (fresh > nc[i].fresh) A.ncNew += fresh - nc[i].fresh;
+                if (strcmp(nc[i].latest, l.items[0].id) || nc[i].fresh != fresh) nc_dirty = true;
+                snprintf(nc[i].latest, 16, "%s", l.items[0].id); nc[i].fresh = fresh;
+                /* charging on Wi-Fi: keep the newest one for offline viewing (≤ 480p, ≤ 5 a day) */
+                SysStatus ss; Sys_status(&ss);
+                time_t tn = time(NULL); int day = (int)(tn / 86400);
+                if (day != A.autodlDay) { A.autodlDay = day; A.autodlToday = 0; }
+                if (S.autodl && fresh > 0 && ss.plugged && ss.wifi > 0 && A.autodlToday < 5 && !Download_busy() && !l.items[0].live && !Store_hasDownload(l.items[0].id)) {
+                    VideoItem v = l.items[0]; if (!v.channel_id[0]) snprintf(v.channel_id, sizeof(v.channel_id), "%s", nc[i].cid);
+                    if (Download_start(&v, 480, DL_VIDEO)) { A.autodlToday++; Log_msg("autodl %s (%s)", v.id, v.title); }
+                }
+            }
+        }
+        VideoList_clear(&l); Yt_forget(A.ncJob); A.ncJob = 0;
+        A.ncIdx++; A.ncNext = now + 1500;   /* gently, one channel at a time */
+        return;
+    }
+    static bool started;
+    if (!started) { started = true; A.ncNext = now + 60000; return; }   /* first round a minute after start */
+    if ((Sint32)(now - A.ncNext) < 0) return;
+    const VideoList *ch = Store_channels();
+    if (A.ncIdx >= ch->count || !ch->count) {
+        if (A.ncIdx && A.ncNew > 0 && S.newbadge) toast("Có %d video mới từ kênh bạn theo dõi · xem ở tab Kênh", A.ncNew);
+        if (A.ncIdx) { nc_save(); A.ncNew = 0; }
+        A.ncIdx = 0; A.ncNext = now + (S.autodl ? 30 : 120) * 60000u;   /* every 2 h (30 min when auto-download is on) */
+        return;
+    }
+    SysStatus ss; Sys_status(&ss);
+    PlayerStatus ps; Player_status(&ps);
+    if (ss.wifi <= 0 || A.hidden || (ps.state == PS_PLAYING && !ps.audio_only && ps.height >= 720)) { A.ncNext = now + 20000; return; }   /* not while HD video decodes */
+    const char *cid = ch->items[A.ncIdx].channel_id;
+    if (!cid[0]) { A.ncIdx++; return; }
+    A.ncJob = Yt_channelPage(cid, 0, 6);
 }
 static void open_channel(const VideoItem *c) {
+    channel_seen(c->channel_id);
     if (K.enabled && K.approved_only && !Kids_approved(c->channel_id)) { toast("Chế độ trẻ em: kênh này chưa được duyệt"); return; }
     VideoList_clear(&A.found); A.searchErr[0] = 0; A.foundAppend = false; A.foundEnd = false;
     snprintf(A.channelId, sizeof(A.channelId), "%s", c->channel_id);
@@ -798,21 +991,108 @@ static void open_channel(const VideoItem *c) {
     A.screen = SC_SEARCH; A.results = true; A.resultSel = 0; A.rscroll = 0;
 }
 static void open_panel(Panel p) {
+    A.panelFirst = 0;
     A.panel = p; A.osd = true;
     if (p == PANEL_QUALITY) A.panelSel = A.quality;
     else if (p == PANEL_SPEED) A.panelSel = A.speedIx;
     else A.panelSel = 0;
+    if (p == PANEL_CHAPTERS) { PlayerStatus st; Player_status(&st); for (int i = 0; i < A.stream.nchap; i++) if (A.stream.chap[i].t <= st.position + 0.5) A.panelSel = i; }
 }
-static int options_count(void) { return 9; }
-/* rows 2-3 are "Subtitles" and "Sleep timer"; the rest keep their old numbers */
-static int opt_id(int i) { return i < 2 ? i : i == 2 ? 7 : i == 3 ? 8 : i - 2; }
+static int chapter_at(double pos) { int c = -1; for (int i = 0; i < A.stream.nchap; i++) if (A.stream.chap[i].t <= pos + 0.3) c = i; return c; }
+/* Tùy chọn video (SELECT): ids keep their old numbers (0-8), 2.3.10 adds 9-16 */
+enum { OPT_QUALITY, OPT_SPEED, OPT_BG, OPT_LATER, OPT_FOLLOW, OPT_DOWNLOAD, OPT_STATS, OPT_SUBS, OPT_SLEEP,
+       OPT_REPEAT, OPT_AB, OPT_CHAPTERS, OPT_BOOST, OPT_LOCK, OPT_MUSIC, OPT_PLAYLIST, OPT_SKIP };
+static int opt_list(int *ids) {
+    int n = 0;
+    ids[n++] = OPT_QUALITY; ids[n++] = OPT_SPEED; ids[n++] = OPT_SUBS;
+    if (A.stream.nchap && !A.cur.live) ids[n++] = OPT_CHAPTERS;
+    ids[n++] = OPT_MUSIC; ids[n++] = OPT_REPEAT;
+    if (!A.cur.live) ids[n++] = OPT_AB;
+    ids[n++] = OPT_BOOST; ids[n++] = OPT_SLEEP; ids[n++] = OPT_LOCK;
+    ids[n++] = OPT_PLAYLIST; ids[n++] = OPT_DOWNLOAD; ids[n++] = OPT_LATER; ids[n++] = OPT_FOLLOW;
+    ids[n++] = OPT_BG; ids[n++] = OPT_STATS;
+    return n;
+}
+static int options_count(void) { int ids[24]; return opt_list(ids); }
+static int opt_id(int i) { int ids[24], n = opt_list(ids); return i >= 0 && i < n ? ids[i] : OPT_STATS; }
+static const char *REPEAT_LABEL[4] = {"Tắt", "Lặp video này", "Lặp cả danh sách", "Phát ngẫu nhiên"};
+static const char *DL_LABEL[DL_KINDS] = {"Video 720p (trong app)", "Video + lưu file MP4", "Nhạc M4A (AAC, gốc)", "Nhạc Opus (gốc, nhẹ)", "Nhạc MP3 128 kbps"};
+static const char *DL_NOTE[DL_KINDS] = {"Thư viện › Đã tải · xem không cần mạng", "Thêm file “Tên video.mp4” trong thư mục NXT Tube", "Không chuyển đổi · chất lượng như YouTube", "Không chuyển đổi · file nhỏ nhất", "Chuyển đổi trên máy · hợp mọi loa / xe hơi"};
+static const char *FDATE[6] = {"Bất kỳ", "1 giờ qua", "Hôm nay", "Tuần này", "Tháng này", "Năm nay"};
+static const char *FDUR[4] = {"Bất kỳ", "Dưới 4 phút", "4 – 20 phút", "Trên 20 phút"};
+static const char *FSORT[4] = {"Liên quan", "Mới nhất", "Nhiều lượt xem", "Đánh giá cao"};
+static int panel_rows(void) {
+    switch (A.panel) {
+        case PANEL_QUALITY: return NQ;
+        case PANEL_SPEED: return NS;
+        case PANEL_DOWNLOAD: return DL_KINDS;
+        case PANEL_PLAYLIST: return PL_count() + (PL_count() < 8 ? 1 : 0);
+        case PANEL_CHAPTERS: return A.stream.nchap;
+        case PANEL_FILTER: return 5;
+        default: return options_count();
+    }
+}
+/* search filters as YouTube's "params" (protobuf: 1 sort, 2 {1 date, 2 type, 3 length, 8 live}) */
+static const char *search_q(const char *q) {
+    static char out[400];
+    if (!A.fDate && !A.fDur && !A.fSort && !A.fLive) return q;
+    unsigned char b[16]; int n = 0, f = 0; unsigned char fl[12];
+    if (A.fSort) { b[n++] = 0x08; b[n++] = (unsigned char)(A.fSort == 1 ? 2 : A.fSort == 2 ? 3 : 1); }
+    if (A.fDate) { fl[f++] = 0x08; fl[f++] = (unsigned char)A.fDate; }
+    fl[f++] = 0x10; fl[f++] = 1;
+    if (A.fDur) { fl[f++] = 0x18; fl[f++] = (unsigned char)(A.fDur == 1 ? 1 : A.fDur == 2 ? 3 : 2); }
+    if (A.fLive) { fl[f++] = 0x40; fl[f++] = 1; }
+    b[n++] = 0x12; b[n++] = (unsigned char)f; memcpy(b + n, fl, f); n += f;
+    static const char *B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    char e[48]; int k = 0;
+    for (int i = 0; i < n; i += 3) {
+        unsigned v = b[i] << 16 | (i + 1 < n ? b[i + 1] << 8 : 0) | (i + 2 < n ? b[i + 2] : 0);
+        e[k++] = B64[v >> 18 & 63]; e[k++] = B64[v >> 12 & 63];
+        if (i + 1 < n) e[k++] = B64[v >> 6 & 63]; else { memcpy(e + k, "%3D", 3); k += 3; }
+        if (i + 2 < n) e[k++] = B64[v & 63]; else { memcpy(e + k, "%3D", 3); k += 3; }
+    }
+    e[k] = 0;
+    snprintf(out, sizeof(out), "@sp:%s|%s", e, q);
+    return out;
+}
+static bool saver_active(void) {
+    if (!S.saver) return false;
+    SysStatus st; Sys_status(&st);
+    return st.battery >= 0 && st.battery < 20 && !st.plugged;
+}
 static const char *SUB_OVERRIDE[] = {"Theo cài đặt", "Bật · dịch", "Ngôn ngữ gốc", "Tắt"};
 static void subs_restart(void) {
     if (!A.hasCur || !A.streamReady) return;
     Subs_open(A.localPlayback ? NULL : &A.stream, A.subOverride);
 }
+static void open_panel(Panel p);
+static void play_index(int i);
 static void run_option(int i) {
+    PlayerStatus ps; Player_status(&ps);
     switch (opt_id(i)) {
+        case OPT_REPEAT: A.repeat = (A.repeat + 1) % 4; toast("Lặp lại: %s", T(REPEAT_LABEL[A.repeat])); break;
+        case OPT_AB:
+            if (A.abA < 0) { A.abA = ps.position; toast("Điểm A: %d:%02d · chọn lần nữa để đặt điểm B", (int)A.abA / 60, (int)A.abA % 60); }
+            else if (A.abB < 0) {
+                if (ps.position > A.abA + 1) { A.abB = ps.position; toast("Lặp đoạn A–B · %d:%02d – %d:%02d", (int)A.abA / 60, (int)A.abA % 60, (int)A.abB / 60, (int)A.abB % 60); Player_seek(A.abA); }
+                else toast("Điểm B phải sau điểm A");
+            } else { A.abA = A.abB = -1; toast("Đã tắt lặp đoạn A–B"); }
+            break;
+        case OPT_CHAPTERS: open_panel(PANEL_CHAPTERS); return;
+        case OPT_BOOST: S.boost = (S.boost + 1) % 4; Player_setBoost(S.boost, S.voice); Settings_save(); toast("Tăng âm lượng: %d%%", 100 + 50 * S.boost); break;
+        case OPT_LOCK: A.keyLock = true; A.lockTaps = 0; A.panel = PANEL_NONE; toast("Đã khóa phím · bấm SELECT 3 lần để mở"); return;
+        case OPT_MUSIC: {
+            bool on = strcmp(QUALITY_ID[A.quality], "audio");
+            if (on) { A.prevQuality = A.quality; A.quality = NQ - 1; } else A.quality = A.prevQuality >= 0 && A.prevQuality < NQ - 1 ? A.prevQuality : 0;
+            if (A.streamReady) start_player(0, true);
+            toast(on ? "Chế độ nghe nhạc · tắt hình, mát máy" : "Đã bật lại hình");
+            A.panel = PANEL_NONE; return;
+        }
+        case OPT_PLAYLIST: open_panel(PANEL_PLAYLIST); return;
+        case OPT_DOWNLOAD:
+            if (A.cur.live) { toast("Không tải được video trực tiếp"); A.panel = PANEL_NONE; return; }
+            if (Download_busy()) { toast("Đang tải video khác, chờ xong nhé"); A.panel = PANEL_NONE; return; }
+            open_panel(PANEL_DOWNLOAD); return;
         case 8: sleep_set((A.sleepMode + 1) % SLEEP_N); break;
         case 7: A.subOverride = (A.subOverride + 1) % 4; subs_restart(); toast("Phụ đề: %s", T(SUB_OVERRIDE[A.subOverride])); break;
         case 0: open_panel(PANEL_QUALITY); break;
@@ -821,18 +1101,55 @@ static void run_option(int i) {
         case 3: toast(Store_toggleLater(&A.cur) ? "Đã thêm vào Xem sau" : "Đã bỏ khỏi Xem sau"); Store_save(); A.panel = PANEL_NONE; break;
         case 4: if (!A.cur.channel_id[0]) { toast("Không rõ kênh của video này"); break; }
             toast(Store_toggleChannel(&A.cur) ? "Đã theo dõi %s" : "Đã bỏ theo dõi %s", A.cur.channel); Store_save(); A.panel = PANEL_NONE; break;
-        case 5: if (Store_hasDownload(A.cur.id)) toast("Video đã có trong máy");
-            else if (A.cur.live) toast("Không tải được video trực tiếp");
-            else if (Download_start(&A.cur, 720)) toast("Bắt đầu tải về máy (720p)");
-            else toast("Đang tải video khác, chờ xong nhé");
-            A.panel = PANEL_NONE; break;
+
         case 6: A.stats = !A.stats; A.panel = PANEL_NONE; break;
     }
 }
+static void open_text(int target);
 static void panel_key(Key k) {
-    int count = A.panel == PANEL_QUALITY ? NQ : A.panel == PANEL_SPEED ? NS : options_count();
+    int count = panel_rows(); if (count < 1) { A.panel = PANEL_NONE; return; }
+    if (A.panelSel >= count) A.panelSel = count - 1;
+    if (A.panel == PANEL_FILTER) {
+        int d = k == K_LEFT ? -1 : k == K_RIGHT ? 1 : k == K_A && A.panelSel < 4 ? 1 : 0;
+        if (k == K_UP) A.panelSel = (A.panelSel + 4) % 5;
+        else if (k == K_DOWN) A.panelSel = (A.panelSel + 1) % 5;
+        else if (d && A.panelSel == 0) A.fDate = (A.fDate + 6 + d) % 6;
+        else if (d && A.panelSel == 1) A.fDur = (A.fDur + 4 + d) % 4;
+        else if (d && A.panelSel == 2) A.fSort = (A.fSort + 4 + d) % 4;
+        else if (d && A.panelSel == 3) A.fLive = !A.fLive;
+        else if ((k == K_A && A.panelSel == 4) || k == K_START) { A.panel = PANEL_NONE; if (A.lastQuery[0]) run_search(A.lastQuery); }
+        else if (k == K_X) { A.fDate = A.fDur = A.fSort = 0; A.fLive = false; }
+        else if (k == K_B || k == K_SELECT) A.panel = PANEL_NONE;
+        return;
+    }
+    if (A.panel == PANEL_DOWNLOAD || A.panel == PANEL_PLAYLIST || A.panel == PANEL_CHAPTERS) {
+        if (k == K_UP) A.panelSel = (A.panelSel + count - 1) % count;
+        else if (k == K_DOWN) A.panelSel = (A.panelSel + 1) % count;
+        else if (k == K_B) A.panel = PANEL_OPTIONS;
+        else if (k == K_A && A.panel == PANEL_DOWNLOAD) {
+            int kind = A.panelSel;
+            if (kind <= DL_VIDEO_MP4 && Store_hasDownload(A.cur.id) && access(Store_downloadPath(A.cur.id, false), F_OK) == 0) {
+                if (kind == DL_VIDEO) toast("Video đã có trong máy");
+                else { char m[400]; Export_video(&A.cur, m, sizeof(m)); toast("%s", m); }
+            } else if (Download_start(&A.cur, saver_active() ? 480 : 720, kind)) toast("Bắt đầu tải: %s", T(DL_LABEL[kind]));
+            else toast("Đang tải video khác, chờ xong nhé");
+            A.panel = PANEL_NONE;
+        } else if (k == K_A && A.panel == PANEL_PLAYLIST) {
+            if (A.panelSel >= PL_count()) { open_text(6); return; }
+            bool added = PL_toggle(A.panelSel, &A.cur);
+            toast(added ? "Đã thêm vào “%s”" : "Đã bỏ khỏi “%s”", T(PL_name(A.panelSel)));
+        } else if (k == K_A && A.panel == PANEL_CHAPTERS) {
+            Player_seek(A.stream.chap[A.panelSel].t + 0.05); A.panel = PANEL_NONE;
+            flash(A.stream.chap[A.panelSel].title);
+        }
+        return;
+    }
     if (k == K_UP) { do A.panelSel = (A.panelSel + count - 1) % count; while (A.panel == PANEL_QUALITY && !quality_available(A.panelSel)); }
     else if (k == K_DOWN) { do A.panelSel = (A.panelSel + 1) % count; while (A.panel == PANEL_QUALITY && !quality_available(A.panelSel)); }
+    else if ((k == K_LEFT || k == K_RIGHT) && A.panel == PANEL_OPTIONS && opt_id(A.panelSel) == OPT_BOOST) {
+        S.boost = (S.boost + 4 + (k == K_LEFT ? -1 : 1)) % 4; Player_setBoost(S.boost, S.voice); Settings_save();
+    }
+    else if ((k == K_LEFT || k == K_RIGHT) && A.panel == PANEL_OPTIONS && opt_id(A.panelSel) == OPT_REPEAT) A.repeat = (A.repeat + 4 + (k == K_LEFT ? -1 : 1)) % 4;
     else if (k == K_A) {
         if (A.panel == PANEL_QUALITY) {
             if (A.panelSel != A.quality) { A.quality = A.panelSel; Store_setQuality(QUALITY_ID[A.quality]); Store_save(); if (A.streamReady) start_player(0, true); }
@@ -904,6 +1221,9 @@ static void apply_audio(void) {
     Player_setAudioMode(S.audio_out); Sys_applyGain();
     A.usbCard = AudioRoute_usbCard();
 }
+#define export_dir Export_dir
+static void export_all(char *m, size_t n) { Export_all(m, n); }
+static void import_takeout(void) { char m[300]; if (Import_takeout(m, sizeof(m)) > 0) { reset_feeds(); load_feed(A.tab, false); } toast("%s", m); }
 static void setting_change(int row, int dir) {
     switch (row) {
         case SET_LANG: S.lang = 1 - S.lang; break;
@@ -935,6 +1255,13 @@ static void setting_change(int row, int dir) {
             A.nextUsbPoll = SDL_GetTicks() + 1500;
             break;
         }
+        case SET_THEME: S.theme = (S.theme + THEMES + dir) % THEMES; D_setTheme(S.theme); break;
+        case SET_SAVER: S.saver = !S.saver; break;
+        case SET_SPONSOR: S.sponsor = (S.sponsor + 3 + dir) % 3; break;
+        case SET_BOOST: S.boost = (S.boost + 4 + dir) % 4; Player_setBoost(S.boost, S.voice); break;
+        case SET_VOICE: S.voice = !S.voice; Player_setBoost(S.boost, S.voice); break;
+        case SET_NEWBADGE: S.newbadge = !S.newbadge; break;
+        case SET_AUTODL: S.autodl = !S.autodl; break;
         case SET_HOME: S.home_mode = 1 - S.home_mode; { Feed *f = &A.feed[0]; for (int i = 0; i < f->njobs; i++) if (f->jobs[i]) Yt_forget(f->jobs[i]); VideoList_clear(&f->list); memset(f, 0, sizeof(*f)); } break;
         default: return;
     }
@@ -944,6 +1271,9 @@ static void setting_action(int row) {
     Uint32 now = SDL_GetTicks();
     switch (row) {
         case SET_KEYS: A.keyPage = true; A.keySelRow = 0; A.capture = -1; return;
+        case SET_CUSTOM: A.custPage = true; A.custSel = 0; A.custScroll = 0; return;
+        case SET_IMPORT: import_takeout(); return;
+        case SET_EXPORT: { char m[300]; export_all(m, sizeof(m)); toast("%s", m); return; }
         case SET_ACCOUNT:
             if (!Account_signedIn()) { Account_startLogin(); A.loginPanel = true; return; }
             if (A.confirmRow == SET_ACCOUNT && now < A.confirmUntil) {
@@ -1007,7 +1337,34 @@ static void capture_assign(int phys) {
     Settings_save();
     toast(T("Đã gán %s cho chức năng %s"), phys_name(phys), KM_LABEL[row]);
 }
+#define CUST_ROWS (2 + CH_N + 5)
+static const char *STATUS_ITEM[5] = {"Pin", "Wi-Fi", "Bluetooth", "Đồng hồ", "DAC USB"};
+static void open_text(int target) {
+    A.textFor = target; A.raw[0] = 0; A.query[0] = 0; A.rawLiteral = false; A.wordEntry = false;
+    A.screen = SC_SEARCH; A.results = false; A.channelView = false; A.searchFocus = 0; if (A.keySel < 0 || A.keySel >= 40) A.keySel = 10;
+}
+static void cust_key(Key k) {
+    int order[CH_N]; chip_full_order(order);
+    int r = A.custSel;
+    if (k == K_UP && r > 0) A.custSel--;
+    else if (k == K_DOWN && r < CUST_ROWS - 1) A.custSel++;
+    else if (k == K_B) { A.custPage = false; Settings_save(); reset_feeds(); load_feed(A.tab, false); }
+    else if (r == 0 && (k == K_LEFT || k == K_RIGHT || k == K_A)) { S.theme = (S.theme + THEMES + (k == K_LEFT ? -1 : 1)) % THEMES; D_setTheme(S.theme); Settings_save(); }
+    else if (r == 1 && k == K_A) open_text(1);
+    else if (r == 1 && k == K_X) { S.app_title[0] = 0; Settings_save(); toast("Đã trả lại tên mặc định"); }
+    else if (r >= 2 && r < 2 + CH_N) {
+        int i = r - 2, id = order[i];
+        if (k == K_A) {
+            if (id >= CH_CUSTOM0) open_text(2 + id - CH_CUSTOM0);
+            else { S.chip_hidden ^= 1u << id; Settings_save(); }
+        } else if (k == K_X && id >= CH_CUSTOM0) { S.custom_chip[id - CH_CUSTOM0][0] = 0; Settings_save(); }
+        else if ((k == K_L1 || k == K_LEFT) && i > 0) { int t = order[i - 1]; order[i - 1] = id; order[i] = t; chip_save_order(order); A.custSel--; Settings_save(); }
+        else if ((k == K_R1 || k == K_RIGHT) && i < CH_N - 1) { int t = order[i + 1]; order[i + 1] = id; order[i] = t; chip_save_order(order); A.custSel++; Settings_save(); }
+        else if (k == K_Y) { S.chip_order[0] = 0; S.chip_hidden = 0; Settings_save(); toast("Đã trả lại thứ tự tab mặc định"); }
+    } else if (r >= 2 + CH_N && k == K_A) { S.status_hide ^= 1u << (r - 2 - CH_N); Settings_save(); }
+}
 static void settings_key(Key k) {
+    if (A.custPage) { cust_key(k); return; }
     if (A.keyPage) {
         if (A.capture >= 0) return;
         if (k == K_UP && A.keySelRow > 0) A.keySelRow--;
@@ -1136,6 +1493,13 @@ static void handle_key(Key k) {
         A.sleepAt += 15 * 60000u; A.sleepFading = false; Player_setFade(1); toast("Thêm 15 phút"); return;
     }
     if (A.pinFor) { pin_key(k); return; }
+    if (A.keyLock && (A.screen == SC_WATCH || A.screen == SC_FULL)) {
+        /* pocket mode: only SELECT ×3 opens it (volume / power still work above) */
+        Uint32 t = SDL_GetTicks();
+        if (k == K_SELECT) { if (t - A.lockTapAt > 1500) A.lockTaps = 0; A.lockTapAt = t; if (++A.lockTaps >= 3) { A.keyLock = false; toast("Đã mở khóa phím"); return; } }
+        flash(T("Đã khóa phím · SELECT ×3"));
+        return;
+    }
     if (A.loginPanel) {                                 /* Google sign-in: B closes, A retries after an error */
         if (k == K_B) { Account_cancelLogin(); A.loginPanel = false; }
         else if (k == K_A && A.loginState == ACC_ERROR) Account_startLogin();
@@ -1182,9 +1546,9 @@ static void handle_key(Key k) {
         else if (k == K_A || k == K_B) { A.dialog = false; request_quit(); }
         return;
     }
-    if (A.panel && (A.screen == SC_WATCH || A.screen == SC_FULL)) { panel_key(k); return; }
+    if (A.panel && (A.screen == SC_WATCH || A.screen == SC_FULL || (A.screen == SC_SEARCH && A.panel == PANEL_FILTER))) { panel_key(k); return; }
     /* L2/R2 move between the main sections everywhere except while watching */
-    if ((k == K_L2 || k == K_R2) && A.screen != SC_WATCH && A.screen != SC_FULL && !(A.screen == SC_SETTINGS && A.keyPage)) {
+    if ((k == K_L2 || k == K_R2) && A.screen != SC_WATCH && A.screen != SC_FULL && !(A.screen == SC_SETTINGS && (A.keyPage || A.custPage)) && !A.textFor) {
         go_section(current_section() + (k == K_R2 ? 1 : -1));
         return;
     }
@@ -1195,7 +1559,7 @@ static void handle_key(Key k) {
         if (k == K_B) { if (A.focus != 0) { A.focus = 0; return; } leave_home(); return; }
         if (k == K_SELECT) { if (A.hasCur) A.screen = SC_WATCH; return; }
         if (k == K_L1 || k == K_R1) { A.tab = (A.tab + (k == K_R1 ? 1 : CHIPS - 1)) % CHIPS; A.sel = 0; A.scroll = 0; A.focus = 0; load_feed(A.tab, false); return; }
-        if (k == K_START) { load_feed(A.tab, true); toast("Đang làm mới %s", T(chip_labels()[A.tab])); return; }
+        if (k == K_START) { load_feed(A.tab, true); toast("Đang làm mới %s", T(chip_label(A.tab))); return; }
         if (A.focus == 1) {
             if (k == K_LEFT && A.tab > 0) { A.tab--; A.sel = 0; A.scroll = 0; load_feed(A.tab, false); }
             else if (k == K_RIGHT && A.tab < CHIPS - 1) { A.tab++; A.sel = 0; A.scroll = 0; load_feed(A.tab, false); }
@@ -1222,7 +1586,19 @@ static void handle_key(Key k) {
         if (k == K_B) { A.screen = SC_HOME; A.focus = 0; return; }
         if (k == K_Y) { open_search(); return; }
         if (k == K_SELECT) { if (A.hasCur) A.screen = SC_WATCH; return; }
-        if (k == K_L1 || k == K_R1) { A.libTab = (A.libTab + (k == K_R1 ? 1 : 3)) % 4; A.libSel = 0; A.lscroll = 0; return; }
+        int ntabs = 4 + PL_count();
+        if (k == K_L1 || k == K_R1) { A.libTab = (A.libTab + (k == K_R1 ? 1 : ntabs - 1)) % ntabs; A.libSel = 0; A.lscroll = 0; return; }
+        if (k == K_X && l->count && A.libTab >= 4) {
+            VideoItem v = l->items[A.libSel]; PL_toggle(A.libTab - 4, &v);
+            if (A.libSel >= PL_list(A.libTab - 4)->count && A.libSel) A.libSel--;
+            toast("Đã bỏ khỏi “%s”", T(PL_name(A.libTab - 4))); return;
+        }
+        if (k == K_START && A.libTab >= 5) {
+            Uint32 t = SDL_GetTicks();
+            if (A.confirmRow == 100 + A.libTab && t < A.confirmUntil) { toast("Đã xóa danh sách “%s”", PL_name(A.libTab - 4)); PL_delete(A.libTab - 4); A.libTab = 4; A.libSel = 0; A.confirmRow = -1; }
+            else { A.confirmRow = 100 + A.libTab; A.confirmUntil = t + 3000; toast("Bấm START lần nữa để xóa danh sách này"); }
+            return;
+        }
         if (k == K_A && l->count) {
             if (A.libTab == 2) { VideoItem c = l->items[A.libSel]; open_channel(&c); }
             else { VideoList copy = {0}; VideoList_copy(&copy, l); open_video(&copy.items[A.libSel], &copy, A.libSel); VideoList_clear(&copy); A.screen = SC_WATCH; }
@@ -1235,6 +1611,29 @@ static void handle_key(Key k) {
     case SC_SETTINGS: settings_key(k); return;
     case SC_KIDS: kids_key(k); return;
     case SC_SEARCH: {
+        if (A.textFor) {
+            /* typing the app title or a keyword tab (Cài đặt → Tùy biến) */
+            bool go = k == K_START || (k == K_A && !strcmp(KEYS[A.keySel], "go"));
+            if (go || (k == K_B && !A.raw[0])) {
+                if (A.textFor == 6) {   /* new playlist from the watch screen */
+                    if (go) {
+                        update_query(); char *q = A.query; while (*q == ' ') q++;
+                        int pl = *q ? PL_create(q) : -1;
+                        if (pl >= 0) { PL_toggle(pl, &A.cur); toast("Đã tạo “%s” và thêm video", q); } else if (*q) toast("Tối đa 8 danh sách");
+                    }
+                    A.textFor = 0; A.raw[0] = 0; A.query[0] = 0; A.screen = SC_WATCH; A.panel = PANEL_NONE; return;
+                }
+                if (go) {
+                    update_query();
+                    char *q = A.query; while (*q == ' ') q++;
+                    if (A.textFor == 1) { snprintf(S.app_title, sizeof(S.app_title), "%s", q); toast(*q ? "Đã đổi tên ứng dụng" : "Đã trả lại tên mặc định"); }
+                    else { snprintf(S.custom_chip[A.textFor - 2], sizeof(S.custom_chip[0]), "%s", q); toast(*q ? "Đã thêm tab “%s”" : "Đã xóa tab từ khóa", q); }
+                    Settings_save();
+                }
+                A.textFor = 0; A.raw[0] = 0; A.query[0] = 0; A.screen = SC_SETTINGS; A.custPage = true; return;
+            }
+            if (k == K_L1 || k == K_R1 || k == K_Y || (k == K_RIGHT && A.keySel % 10 == 9)) { if (k == K_Y && strlen(A.raw) + 1 < sizeof(A.raw)) strcat(A.raw, " "); return; }
+        }
         if (A.wordEntry) {
             /* adding a blocked word for kids mode: the keyboard types it, START/Tìm saves it */
             bool go = k == K_START || (k == K_A && !strcmp(KEYS[A.keySel], "go"));
@@ -1254,6 +1653,7 @@ static void handle_key(Key k) {
             else if (k == K_X && A.found.count) { toast(Store_toggleLater(&A.found.items[A.resultSel]) ? "Đã thêm vào Xem sau" : "Đã bỏ khỏi Xem sau"); Store_save(); }
             else if (k == K_B) { if (A.channelView) { A.screen = SC_LIBRARY; A.libTab = 2; A.channelView = false; } else A.results = false; }
             else if (k == K_Y) { A.screen = SC_HOME; A.focus = 0; }
+            else if (k == K_SELECT && !A.channelView) { open_panel(PANEL_FILTER); return; }
             if (A.resultSel + 4 >= A.found.count) more_results();
             return;
         }
@@ -1326,6 +1726,7 @@ static void draw_logo(int x, int y) {
     D_roundRing(x, y + 6, 36, 28, 6, 3, C_TOMATO);
     D_tri(x + 13, y + 12, x + 13, y + 26, x + 25, y + 19, C_TOMATO);
     D_line(x + 11, y, x + 18.5f, y + 6.5f, 2.6f, C_TOMATO); D_line(x + 26, y, x + 18.5f, y + 6.5f, 2.6f, C_TOMATO);
+    if (S.app_title[0]) { D_text(F_XBOLD, 32, S.app_title, x + 48, y + 19 - D_fontHeight(F_XBOLD, 32) / 2, C_INK, 236, AL_LEFT); return; }
     int w = D_text(F_PIXEL, 46, "NXT", x + 48, y - 8, C_INK, 0, AL_LEFT);
     int w2 = D_text(F_PIXEL, 46, "TUBE", x + 48 + w, y - 8, C_TOMATO, 0, AL_LEFT);
     int bx = x + 48 + w + w2 + 10;
@@ -1420,9 +1821,10 @@ static void draw_mini(void) {
 
 static int grid_vh(void) { return A.hasCur ? 462 : 546; }
 static void card_meta(const VideoList *l, int i, int libtab, char *meta, size_t n, const char **mo, double *progress) {
-    *mo = NULL; *progress = libtab == 0 ? Store_historyProgress(i) : 0;
+    *mo = NULL; *progress = libtab == 0 ? Store_historyProgress(i) : libtab < 0 ? l->items[i].watched : 0;
     if (libtab == 0) { snprintf(meta, n, "%s · %s", l->items[i].channel, *progress >= 0.97 ? T("đã xem hết") : T("xem tiếp")); *mo = meta; }
-    if (libtab == 2) { snprintf(meta, n, "%s", T("A xem video mới của kênh")); *mo = meta; }
+    if (libtab == 2) { int f = channel_new(l->items[i].channel_id); if (f) snprintf(meta, n, T("%d video mới · A xem"), f); else snprintf(meta, n, "%s", T("A xem video mới của kênh")); *mo = meta; }
+    if (libtab >= 4) { snprintf(meta, n, "%s · %s", l->items[i].channel, T("X bỏ khỏi danh sách")); *mo = meta; }
     if (libtab == 3) { snprintf(meta, n, "%s · %s", l->items[i].channel, T("xem không cần mạng")); *mo = meta; }
 }
 static void draw_grid(const VideoList *l, int sel, bool focus, float *scroll, int libtab, bool loading_more, bool at_end) {
@@ -1516,6 +1918,11 @@ static int draw_status(int right, int min_left, int cy) {
     int wbat = st.battery >= 0 ? D_textW(F_SEMI, 19, pct) + 6 + 40 : 0;
     int wclk = clock[0] ? D_textW(F_SEMI, 20, clock) : 0;
     int wwifi = st.wifi ? 26 : 0, wbt = st.bt ? 22 : 0, wdac = (A.usbCard >= 0 || (getenv("NXT_TUBE_FAKE_STATUS") && strchr(getenv("NXT_TUBE_FAKE_STATUS"), 'd'))) ? D_textW(F_BOLD, 14, "DAC") + 14 : 0;
+    if (S.status_hide & 1) wbat = 0;
+    if (S.status_hide & 2) wwifi = 0;
+    if (S.status_hide & 4) wbt = 0;
+    if (S.status_hide & 8) wclk = 0;
+    if (S.status_hide & 16) wdac = 0;
     int w[5] = {wbat, wclk, wwifi, wbt, wdac}, gap = 14, room = right - min_left, used = 0;
     bool on[5] = {0};
     for (int i = 0; i < 5; i++) if (w[i] && used + w[i] + (used ? gap : 0) <= room) { on[i] = true; used += w[i] + (used ? gap : 0); }
@@ -1573,7 +1980,7 @@ static void draw_home(void) {
         int bw = D_textW(F_BOLD, 17, b) + 24;
         D_round(292, 24, bw, 32, 16, C_MUSTARD); D_text(F_BOLD, 17, b, 292 + bw / 2, 30, C_DARK, 0, AL_CENTER);
     }
-    draw_chips(chip_labels(), CHIPS, A.tab, A.focus == 1, 92);
+    { const char *labs[CH_N]; for (int i = 0; i < nchips; i++) labs[i] = chip_label(i); draw_chips(labs, nchips, A.tab, A.focus == 1, 92); }
     Feed *f = &A.feed[A.tab];
     VideoList *l = &f->list;
     bool busy = feed_busy(f);
@@ -1596,20 +2003,29 @@ static void draw_library(void) {
     header_hints(SCREEN_R, k, t, 2);
     draw_stripes(76);
     const char *tabs[4] = {"Lịch sử", "Xem sau", "Kênh theo dõi", "Đã tải"};
-    char lbl[4][64]; const char *lp[4];
+    int ntabs = 4 + PL_count(); if (ntabs > 12) ntabs = 12;
+    if (A.libTab >= ntabs) A.libTab = 0;
+    char lbl[12][72]; const char *lp[12];
     int counts[4] = {Store_history()->count, Store_later()->count, Store_channels()->count, Store_downloads()->count};
-    for (int i = 0; i < 4; i++) { snprintf(lbl[i], sizeof(lbl[i]), "%s %d", T(tabs[i]), counts[i]); lp[i] = lbl[i]; }
-    draw_chips(lp, 4, A.libTab, false, 92);
+    int fresh = channels_new_total();
+    for (int i = 0; i < 4; i++) {
+        if (i == 2 && fresh) snprintf(lbl[i], sizeof(lbl[i]), T("%s %d · %d mới"), T(tabs[i]), counts[i], fresh);
+        else snprintf(lbl[i], sizeof(lbl[i]), "%s %d", T(tabs[i]), counts[i]);
+        lp[i] = lbl[i];
+    }
+    for (int i = 4; i < ntabs; i++) { snprintf(lbl[i], sizeof(lbl[i]), "%s %d", T(PL_name(i - 4)), PL_list(i - 4)->count); lp[i] = lbl[i]; }
+    draw_chips(lp, ntabs, A.libTab, false, 92);
     const VideoList *l = library_list();
     if (A.libSel >= l->count) A.libSel = l->count ? l->count - 1 : 0;
     if (l->count) draw_grid(l, A.libSel, true, &A.lscroll, A.libTab, false, false);
     else {
-        const char *notes[4] = {"Video bạn xem sẽ hiện ở đây, kèm chỗ xem dở", "Bấm X trên một video để lưu xem sau", "Khi xem video: SELECT › Theo dõi kênh", "Khi xem video: SELECT › Tải về máy"};
-        draw_empty(T("Chưa có gì ở mục này"), T(notes[A.libTab]), false);
+        const char *notes[5] = {"Video bạn xem sẽ hiện ở đây, kèm chỗ xem dở", "Bấm X trên một video để lưu xem sau", "Khi xem video: SELECT › Theo dõi kênh · hoặc nhập từ Google Takeout (Cài đặt)", "Khi xem video: SELECT › Tải về máy", "Khi xem video: SELECT › Thêm vào danh sách phát"};
+        draw_empty(T("Chưa có gì ở mục này"), T(notes[A.libTab < 4 ? A.libTab : 4]), false);
     }
     if (A.hasCur) draw_mini();
     draw_nav(A.libTab == 2 ? 2 : 3, -1);
 }
+static void draw_panel(void);
 static void draw_search(void) {
     D_rect(0, 0, SCREEN_W, SCREEN_H, C_BG);
     if (A.results && A.channelView) {
@@ -1620,7 +2036,7 @@ static void draw_search(void) {
         int tw = 0;
         update_query();
         if (A.query[0]) tw = D_text(F_SEMI, 30, A.query, 88, 60 - D_fontHeight(F_SEMI, 30) / 2, C_INK, 556, AL_LEFT);
-        else D_text(F_REG, 28, A.wordEntry ? "Nhập từ khóa cấm…" : "Tìm video, kênh…", 96, 60 - D_fontHeight(F_REG, 28) / 2, RGBA(0x8F, 0x87, 0x99, 255), 0, AL_LEFT);
+        else D_text(F_REG, 28, A.textFor == 1 ? "Tên hiện ở góc trên (để trống = mặc định)…" : A.textFor == 6 ? "Tên danh sách phát mới…" : A.textFor ? "Từ khóa cho tab mới…" : A.wordEntry ? "Nhập từ khóa cấm…" : "Tìm video, kênh…", 96, 60 - D_fontHeight(F_REG, 28) / 2, RGBA(0x8F, 0x87, 0x99, 255), 0, AL_LEFT);
         if (!A.results && A.searchFocus == 0 && (SDL_GetTicks() / 500) % 2 == 0) D_rect(tw ? 88 + tw + 2 : 88, 43, 3, 34, C_MUSTARD);
         D_hint(SCREEN_W - 164, 46, KN(K_X), "Xóa hết");
         D_hint(SCREEN_W - 364, 46, KN(K_SELECT), A.telexOff ? "Telex: tắt" : "Telex: bật");
@@ -1629,7 +2045,7 @@ static void draw_search(void) {
         for (int i = 0; i < 40; i++) {
             int x = 24 + (i % 10) * 61, y = 124 + (i / 10) * 72;
             bool on = i == A.keySel && A.searchFocus == 0, go = !strcmp(KEYS[i], "go");
-            const char *label = !strcmp(KEYS[i], "del") ? T("Xóa") : !strcmp(KEYS[i], "space") ? T("Cách") : go ? (A.wordEntry ? T("Thêm") : T("Tìm")) :
+            const char *label = !strcmp(KEYS[i], "del") ? T("Xóa") : !strcmp(KEYS[i], "space") ? T("Cách") : go ? (A.wordEntry || A.textFor ? T(A.textFor ? "Lưu" : "Thêm") : T("Tìm")) :
                                 !strcmp(KEYS[i], "sym") ? "#+=" : !strcmp(KEYS[i], "abc") ? "abc" : KEYS[i];
             if (on) { D_round(x + 3, y + 3, 53, 64, 10, C_BLACK); x -= 2; y -= 2; }
             D_round(x, y, 53, 64, 10, on ? C_MUSTARD : go ? C_TOMATO : C_SURFACE);
@@ -1655,7 +2071,15 @@ static void draw_search(void) {
         }
         if (!rec->count) D_text(F_REG, 19, "Chưa có lượt tìm nào", 648, 160, C_DIM, 0, AL_LEFT);
     } else {
-        if (!A.channelView) D_text(F_MED, 18, A.resultTitle, 24, 106, C_MUTED, SCREEN_W - 64, AL_LEFT);
+        if (!A.channelView) {
+            int tw = D_text(F_MED, 18, A.resultTitle, 24, 106, C_MUTED, SCREEN_W - 380, AL_LEFT);
+            char fl[160] = "";
+            if (A.fDate) snprintf(fl + strlen(fl), sizeof(fl) - strlen(fl), "%s · ", T(FDATE[A.fDate]));
+            if (A.fDur) snprintf(fl + strlen(fl), sizeof(fl) - strlen(fl), "%s · ", T(FDUR[A.fDur]));
+            if (A.fSort) snprintf(fl + strlen(fl), sizeof(fl) - strlen(fl), "%s · ", T(FSORT[A.fSort]));
+            if (A.fLive) snprintf(fl + strlen(fl), sizeof(fl) - strlen(fl), "%s · ", T("Trực tiếp"));
+            if (fl[0]) { fl[strlen(fl) - 4] = 0; int fw = D_textW(F_BOLD, 15, fl) + 20; D_round(24 + tw + 14, 104, fw, 26, 13, C_MUSTARD); D_text(F_BOLD, 15, fl, 24 + tw + 14 + fw / 2, 108, C_DARK, 0, AL_CENTER); }
+        }
         if (A.searchJob && !A.found.count) { D_spinner(SCREEN_W / 2, 380, 30, C_MUSTARD); D_text(F_BOLD, 22, "Đang tìm trên YouTube…", SCREEN_W / 2, 430, C_INK, 0, AL_CENTER); }
         else if (!A.found.count) D_text(F_BOLD, 22, A.searchErr[0] ? A.searchErr : T("Không có kết quả"), SCREEN_W / 2, 400, C_INK, 900, AL_CENTER);
         float target = A.resultSel > 3 ? (A.resultSel - 3) * 114 : 0;
@@ -1686,7 +2110,8 @@ static void draw_search(void) {
     int x = 24;
     char l2r2[16]; snprintf(l2r2, sizeof(l2r2), "%s %s", KN(K_L2), KN(K_R2));
     if (!A.results) { x += D_hint(x, 728, KN(K_A), "Gõ") + 20; x += D_hint(x, 728, KN(K_B), "Xóa chữ / về") + 20; x += D_hint(x, 728, KN(K_Y), "Dấu cách") + 20; x += D_hint(x, 728, KN(K_START), "Tìm") + 20; D_hint(x, 728, l2r2, "Đổi mục"); }
-    else { x += D_hint(x, 728, "UD", "Chọn") + 20; x += D_hint(x, 728, KN(K_A), "Xem") + 20; x += D_hint(x, 728, KN(K_X), "Xem sau") + 20; x += D_hint(x, 728, KN(K_B), A.channelView ? "Về thư viện" : "Sửa từ khóa") + 20; D_hint(x, 728, l2r2, "Đổi mục"); }
+    else { x += D_hint(x, 728, "UD", "Chọn") + 20; x += D_hint(x, 728, KN(K_A), "Xem") + 20; x += D_hint(x, 728, KN(K_X), "Xem sau") + 20; if (!A.channelView) x += D_hint(x, 728, KN(K_SELECT), "Bộ lọc") + 20; x += D_hint(x, 728, KN(K_B), A.channelView ? "Về thư viện" : "Sửa từ khóa") + 20; D_hint(x, 728, l2r2, "Đổi mục"); }
+    if (A.panel == PANEL_FILTER) draw_panel();
 }
 
 /* ---------- settings screen ---------- */
@@ -1748,6 +2173,27 @@ static void setting_text(int row, char *label, size_t ln, char *value, size_t vn
                 snprintf(note, nn, "%s", T("A để đăng nhập bằng mã trên điện thoại (google.com/device) · nên dùng tài khoản phụ"));
             }
             break;
+        case SET_THEME: snprintf(label, ln, "%s", T("Màu giao diện")); snprintf(value, vn, "%s", T(D_themeName(S.theme))); snprintf(note, nn, "%s", T("6 bộ màu · đổi là thấy ngay · thêm tên, thứ tự tab trong mục Tùy biến")); break;
+        case SET_SAVER: snprintf(label, ln, "%s", T("Tiết kiệm pin tự động")); snprintf(value, vn, "%s", T(onoff[S.saver]));
+            snprintf(note, nn, "%s", T("Pin dưới 20% và không sạc: tối đa 480p 30 hình, tắt lấy luồng trước, giảm sáng nhẹ · mát máy hơn")); break;
+        case SET_SPONSOR: { static const char *m[3] = {"Tắt", "Tự bỏ qua", "Chỉ báo"};
+            snprintf(label, ln, "%s", T("Bỏ qua quảng cáo trong video")); snprintf(value, vn, "%s", T(m[S.sponsor]));
+            snprintf(note, nn, "%s", T("SponsorBlock: đoạn tài trợ, tự quảng cáo, nhắc đăng ký do cộng đồng đánh dấu · đoạn đã đánh dấu hiện màu vàng trên thanh tua")); break; }
+        case SET_BOOST: { static const char *m[4] = {"100%", "150%", "200%", "250%"};
+            snprintf(label, ln, "%s", T("Tăng âm lượng")); snprintf(value, vn, "%s", m[S.boost]);
+            snprintf(note, nn, "%s", T("Cho video thu tiếng nhỏ · có bộ chống vỡ tiếng · đổi nhanh trong Tùy chọn video (SELECT)")); break; }
+        case SET_VOICE: snprintf(label, ln, "%s", T("Giọng nói rõ")); snprintf(value, vn, "%s", T(onoff[S.voice]));
+            snprintf(note, nn, "%s", T("Làm nổi giọng người, giảm tiếng ù trầm · hợp podcast, tin tức, loa nhỏ của máy")); break;
+        case SET_NEWBADGE: snprintf(label, ln, "%s", T("Báo video mới của kênh")); snprintf(value, vn, "%s", T(onoff[S.newbadge]));
+            snprintf(note, nn, "%s", T("Chấm đỏ ở tab Kênh và trên kênh có video mới từ lần xem trước · kiểm tra mỗi 2 giờ khi có Wi-Fi")); break;
+        case SET_AUTODL: snprintf(label, ln, "%s", T("Tự tải video mới khi sạc")); snprintf(value, vn, "%s", T(onoff[S.autodl]));
+            snprintf(note, nn, "%s", T("Đang cắm sạc + có Wi-Fi: tự tải 1 video mới nhất của mỗi kênh theo dõi (tối đa 5 video/ngày, 480p) để xem không cần mạng")); break;
+        case SET_CUSTOM: snprintf(label, ln, "%s", T("Tùy biến giao diện")); snprintf(value, vn, "%s", "A");
+            snprintf(note, nn, "%s", T("Màu, tên ứng dụng, sắp xếp / ẩn / thêm tab trang chủ, ẩn biểu tượng thanh trạng thái")); break;
+        case SET_IMPORT: snprintf(label, ln, "%s", T("Nhập kênh từ Google Takeout")); snprintf(value, vn, "%s", "A");
+            snprintf(note, nn, T("Chép file subscriptions.csv (Takeout › YouTube › đăng ký) vào %s rồi bấm A"), export_dir()); break;
+        case SET_EXPORT: snprintf(label, ln, "%s", T("Xuất video & nhạc đã tải")); snprintf(value, vn, "%s", "A");
+            snprintf(note, nn, T("Chép mọi video / nhạc đã tải thành file có tên dễ đọc vào %s · xem được bằng máy tính, app khác"), export_dir()); break;
         case SET_KEYS: snprintf(label, ln, "%s", T("Đổi phím")); snprintf(value, vn, "%s", "A"); snprintf(note, nn, "%s", T("Gán lại A, B, X, Y, L1, R1, L2, R2, START, SELECT")); break;
         case SET_ICON: snprintf(label, ln, "%s", T("Icon trong menu Tools")); snprintf(value, vn, "%s", A.iconState == 1 ? T("Đã cài") : A.iconState == 0 ? T("Chưa cài") : T("Không hỗ trợ")); snprintf(note, nn, "%s", A.iconStatus[0] ? A.iconStatus : T("NX Redux (mọi phiên bản): thêm icon NXT Retro Tube vào menu Tools · tự sửa lại sau khi cập nhật hệ điều hành")); break;
         case SET_CACHE: snprintf(label, ln, "%s", T("Xóa bộ nhớ đệm")); snprintf(value, vn, "%s", "A"); snprintf(note, nn, "%s", T("Ảnh thu nhỏ và danh sách đã lưu")); break;
@@ -1783,13 +2229,89 @@ static void setting_text(int row, char *label, size_t ln, char *value, size_t vn
             snprintf(note, nn, "%s · MoMo %s · %s · PayPal %s", APP_AUTHOR, DONATE_MOMO, DONATE_BANK, DONATE_PAYPAL); break;
     }
 }
+static void draw_custom(void) {
+    int order[CH_N]; chip_full_order(order);
+    int rowh = 54, top = 96, vis = 11;
+    float target = A.custSel > vis - 3 ? (A.custSel - (vis - 3)) * rowh : 0;
+    A.custScroll += (target - A.custScroll) * 0.35f; if (fabsf(target - A.custScroll) < 1) A.custScroll = target;
+    SDL_RenderSetClipRect(A.ren, &(SDL_Rect){0, top - 6, SCREEN_W, 716 - top});
+    int w = SCREEN_W - 48 - 360;
+    for (int r = 0; r < CUST_ROWS; r++) {
+        int y = top + r * rowh - (int)A.custScroll;
+        if (y < top - rowh || y > 716) continue;
+        bool on = r == A.custSel;
+        char label[120], value[80]; const char *section = NULL; bool hidden = false;
+        if (r == 0) { section = "Giao diện"; snprintf(label, sizeof(label), "%s", T("Màu giao diện")); snprintf(value, sizeof(value), "‹ %s ›", T(D_themeName(S.theme))); }
+        else if (r == 1) { snprintf(label, sizeof(label), "%s", T("Tên ứng dụng")); snprintf(value, sizeof(value), "%s", S.app_title[0] ? S.app_title : T("Mặc định")); }
+        else if (r < 2 + CH_N) {
+            int id = order[r - 2];
+            if (r == 2) section = "Tab trang chủ";
+            if (id >= CH_CUSTOM0) {
+                const char *kw = S.custom_chip[id - CH_CUSTOM0];
+                snprintf(label, sizeof(label), "%s", kw[0] ? kw : T("+ Tab từ khóa của bạn"));
+                snprintf(value, sizeof(value), "%s", kw[0] ? T("Hiện") : T("Trống"));
+                hidden = !kw[0];
+            } else {
+                snprintf(label, sizeof(label), "%s", T(CHIPDEF_LABEL[id]));
+                hidden = S.chip_hidden & (1u << id);
+                snprintf(value, sizeof(value), "%s", hidden ? T("Ẩn") : T("Hiện"));
+            }
+        } else {
+            int b = r - 2 - CH_N;
+            if (b == 0) section = "Thanh trạng thái";
+            snprintf(label, sizeof(label), "%s", T(STATUS_ITEM[b]));
+            hidden = S.status_hide & (1u << b);
+            snprintf(value, sizeof(value), "%s", hidden ? T("Ẩn") : T("Hiện"));
+        }
+        if (on) D_round(27, y + 3, w, 46, 10, C_BLACK);
+        D_round(24, y, w, 46, 10, on ? C_INK : C_SURFACE);
+        (void)section;
+        D_text(F_SEMI, 19, label, 42, y + 11, on ? C_DARK : hidden ? C_DIM : C_INK, w - 220, AL_LEFT);
+        int vw = D_textW(F_BOLD, 17, value) + 22; if (vw > 260) vw = 260;
+        D_round(24 + w - 14 - vw, y + 8, vw, 30, 8, on ? C_MUSTARD : hidden ? C_BG : C_RAISED);
+        D_text(F_BOLD, 17, value, 24 + w - 14 - vw / 2, y + 12, on ? C_DARK : hidden ? C_DIM : C_INK, vw - 10, AL_CENTER);
+    }
+    SDL_RenderSetClipRect(A.ren, NULL);
+    /* live preview: header + chips as they will look */
+    int px = SCREEN_W - 360, pw = 336;
+    D_shadow(px, 96, pw, 300, 14, 6); D_round(px, 96, pw, 300, 14, C_BG); D_roundRing(px, 96, pw, 300, 14, 2, C_LINE);
+    D_text(F_BOLD, 15, "Xem trước", px + 16, 106, C_DIM, 0, AL_LEFT);
+    D_text(F_XBOLD, 24, S.app_title[0] ? S.app_title : "NXT TUBE", px + 16, 132, S.app_title[0] ? C_INK : C_TOMATO, pw - 32, AL_LEFT);
+    D_rect(px + 16, 172, pw - 32, 2, C_TOMATO); D_rect(px + 16, 174, pw - 32, 2, C_MUSTARD);
+    int cx = px + 16, cy = 188, n = 0;
+    for (int i = 0; i < CH_N && cy < 300; i++) {
+        int id = order[i];
+        if (S.chip_hidden & (1u << id)) continue;
+        if (id >= CH_CUSTOM0 && !S.custom_chip[id - CH_CUSTOM0][0]) continue;
+        const char *l = id >= CH_CUSTOM0 ? S.custom_chip[id - CH_CUSTOM0] : T(CHIPDEF_LABEL[id]);
+        int tw = D_textW(F_SEMI, 15, l) + 20; if (tw > pw - 32) tw = pw - 32;
+        if (cx + tw > px + pw - 16) { cx = px + 16; cy += 36; }
+        if (cy + 28 > 320) break;
+        D_round(cx, cy, tw, 28, 14, n == 0 ? C_INK : C_SURFACE);
+        D_text(F_SEMI, 15, l, cx + tw / 2, cy + 5, n == 0 ? C_DARK : C_INK, tw - 8, AL_CENTER);
+        cx += tw + 8; n++;
+    }
+    D_round(px + 16, 330, 90, 50, 8, C_SURFACE); D_rect(px + 16, 374, 50, 4, C_TOMATO);
+    D_round(px + 116, 330, 90, 50, 8, C_SURFACE); D_roundRing(px + 114, 328, 94, 54, 9, 3, C_MUSTARD);
+    D_round(px + 216, 330, 90, 50, 8, C_SURFACE);
+    const char *tip = A.custSel == 0 ? "Trái / Phải đổi màu · xem ngay" : A.custSel == 1 ? "A gõ tên mới · X trả về mặc định" :
+                      A.custSel < 2 + CH_N ? "A hiện/ẩn (tab từ khóa: A sửa, X xóa) · L1/R1 hoặc Trái/Phải di chuyển · Y thứ tự mặc định" : "A hiện / ẩn biểu tượng này";
+    D_textBox(F_REG, 16, tip, px, 410, pw, 4, 22, C_MUTED);
+    D_rect(0, 716, SCREEN_W, 52, C_BAR);
+    int x = 24;
+    x += D_hint(x, 728, KN(K_A), A.custSel == 1 ? "Sửa tên" : "Đổi") + 20;
+    if (A.custSel >= 2 && A.custSel < 2 + CH_N) { x += D_hint(x, 728, KN(K_L1), "Lên") + 12; x += D_hint(x, 728, KN(K_R1), "Xuống") + 20; }
+    D_hint(x, 728, KN(K_B), "Xong");
+}
 static void draw_settings(void) {
     D_rect(0, 0, SCREEN_W, SCREEN_H, C_BG);
-    D_text(F_XBOLD, 34, A.keyPage ? "Đổi phím" : "Cài đặt", 24, 16, C_INK, 0, AL_LEFT);
+    const char *ttl = A.custPage ? "Tùy biến giao diện" : A.keyPage ? "Đổi phím" : "Cài đặt";
+    D_text(F_XBOLD, 34, ttl, 24, 16, C_INK, 0, AL_LEFT);
     const char *k[2] = {KN(K_B), KN(K_A)}, *t[2] = {"Về", A.keyPage ? "Gán phím" : "Chọn"};
-    status_min = 24 + D_textW(F_XBOLD, 34, T(A.keyPage ? "Đổi phím" : "Cài đặt")) + 30;
+    status_min = 24 + D_textW(F_XBOLD, 34, T(ttl)) + 30;
     header_hints(SCREEN_R, k, t, 2);
     draw_stripes(76);
+    if (A.custPage) { draw_custom(); return; }
     if (A.keyPage) {
         for (int i = 0; i < KM_COUNT; i++) {
             int y = 96 + i * 58; bool on = i == A.keySelRow;
@@ -1855,9 +2377,70 @@ static void draw_progress(int x, int y, int w, int h, PlayerStatus *st) {
         double played = fmin(1, st->position / st->duration), buf = fmin(1, (st->position + st->buffered) / st->duration);
         D_round(x, y, (int)(w * buf), h, h / 2, RGBA(244, 239, 230, 120));
         D_round(x, y, (int)(w * played), h, h / 2, C_TOMATO);
+        /* SponsorBlock segments (green), A–B loop (blue), chapter gaps */
+        SponsorSeg seg[24]; int ns = S.sponsor ? Sponsor_get(A.cur.id, seg, 24) : 0;
+        for (int i = 0; i < ns; i++) {
+            int sx = x + (int)(w * fmin(1, seg[i].start / st->duration)), ex = x + (int)(w * fmin(1, seg[i].end / st->duration));
+            if (ex - sx < 2) ex = sx + 2;
+            D_rect(sx, y, ex - sx, h, RGBA(0x2F, 0xC5, 0x6A, 230));
+        }
+        if (A.abA >= 0) {
+            int sx = x + (int)(w * fmin(1, A.abA / st->duration)), ex = A.abB > 0 ? x + (int)(w * fmin(1, A.abB / st->duration)) : sx + 3;
+            D_rect(sx, y - 3, ex - sx < 3 ? 3 : ex - sx, 3, RGBA(0x3E, 0x8B, 0xFF, 255));
+        }
+        for (int i = 1; i < A.stream.nchap; i++) { int cx = x + (int)(w * fmin(1, A.stream.chap[i].t / st->duration)); D_rect(cx - 1, y, 3, h, C_BLACK); }
         int kx = x + (int)(w * played);
         D_circle(kx, y + h / 2, h + 3, C_BLACK); D_circle(kx, y + h / 2, h + 1, C_MUSTARD);
+        /* seek preview: the storyboard frame where you are about to land, with the chapter name */
+        static Uint32 seek_seen; static double seek_t;
+        if (A.seekPending) { seek_seen = SDL_GetTicks(); seek_t = A.seekTarget; }
+        if (seek_seen && SDL_GetTicks() - seek_seen < 900) {
+            bool big = w > 900;
+            int pw = big ? 256 : 192, ph = pw * 9 / 16;
+            int tx = x + (int)(w * fmin(1, seek_t / st->duration)) - pw / 2;
+            if (tx < x) tx = x;
+            if (tx + pw > x + w) tx = x + w - pw;
+            int c = chapter_at(seek_t);
+            int ty = y - 18 - ph - (c >= 0 ? 26 : 0) - 30;
+            SDL_Texture *tex; SDL_Rect src;
+            bool have = Preview_frame(A.ren, seek_t, &tex, &src);
+            if (have || c >= 0) {
+                int boxh = (have ? ph : 0) + 30 + (c >= 0 ? 26 : 0);
+                int by = y - 18 - boxh;
+                D_round(tx - 4, by - 4, pw + 8, boxh + 8, 10, C_BLACK);
+                if (have) { SDL_RenderCopy(A.ren, tex, &src, &(SDL_Rect){tx, by, pw, ph}); D_roundRing(tx - 4, by - 4, pw + 8, ph + 8, 10, 3, C_MUSTARD); }
+                char tm[24]; fmt_time(seek_t, tm, sizeof(tm));
+                D_text(F_PIXEL, 26, tm, tx + pw / 2, by + (have ? ph : 0) + 2, C_INK, 0, AL_CENTER);
+                if (c >= 0) D_text(F_SEMI, 16, A.stream.chap[c].title, tx + pw / 2, by + (have ? ph : 0) + 30, C_MUSTARD, pw, AL_CENTER);
+            }
+            (void)ty;
+        }
     } else if (st->live) D_round(x, y, w, h, h / 2, C_TOMATO);
+}
+/* sound only: a music screen instead of an empty video box (static, no animation: cool and cheap) */
+static void draw_music(SDL_Rect a, const PlayerStatus *st, bool big) {
+    D_rect(a.x, a.y, a.w, a.h, RGBA(0x12, 0x0F, 0x18, 255));
+    SDL_Texture *t = Thumbs_get(A.cur.id);
+    int side = a.h * (big ? 46 : 52) / 100;
+    int cx = a.x + (big ? a.w / 2 - side - 10 : a.w / 2), cy = a.y + (big ? a.h / 2 : a.h * 40 / 100);
+    if (t) {
+        /* blurred-looking backdrop: the thumbnail stretched and darkened */
+        SDL_SetTextureColorMod(t, 70, 70, 80); SDL_RenderCopy(A.ren, t, NULL, &a); SDL_SetTextureColorMod(t, 255, 255, 255);
+    }
+    /* record: dark disc, the cover (square crop of the 16:9 thumbnail) in the middle */
+    D_circle(cx, cy, side / 2 + 10, C_BLACK);
+    for (int r = side / 2 + 6; r > side / 4; r -= 7) D_ring(cx, cy, r, 1, RGBA(255, 255, 255, 18));
+    if (t) { SDL_Rect src = {70, 0, 180, 180}; SDL_RenderCopy(A.ren, t, &src, &(SDL_Rect){cx - side / 4, cy - side / 4, side / 2, side / 2}); }
+    D_circle(cx, cy, 6, C_BG);
+    if (big) {
+        int tx = cx + side / 2 + 40, tw = a.x + a.w - tx - 40;
+        D_text(F_BOLD, 15, st->state == PS_PLAYING ? "ĐANG PHÁT · CHỈ ÂM THANH" : "CHỈ ÂM THANH", tx, cy - 92, C_MUSTARD, tw, AL_LEFT);
+        D_textBox(F_BOLD, 30, A.cur.title, tx, cy - 64, tw, 2, 38, C_INK);
+        D_text(F_REG, 20, A.cur.channel, tx, cy + 20, C_MUTED, tw, AL_LEFT);
+        int c = chapter_at(st->position);
+        if (c >= 0) D_text(F_SEMI, 18, A.stream.chap[c].title, tx, cy + 52, C_INK, tw, AL_LEFT);
+        if (A.repeat || A.abB > 0) D_text(F_MED, 16, A.abB > 0 ? T("Lặp đoạn A–B") : T(REPEAT_LABEL[A.repeat]), tx, cy + 82, C_DIM, tw, AL_LEFT);
+    }
 }
 static void draw_stats(int x, int y, PlayerStatus *st) {
     char lines[8][2][128];
@@ -1909,17 +2492,42 @@ static void draw_panel(void) {
     if (!A.panel) return;
     int x = SCREEN_W - 392;
     D_rect(x, 0, 392, SCREEN_H, C_SURFACE); D_rect(x, 0, 3, SCREEN_H, C_BLACK);
-    const char *title = A.panel == PANEL_QUALITY ? "Chất lượng video" : A.panel == PANEL_SPEED ? "Tốc độ phát" : "Tùy chọn video";
-    const char *sub = A.panel == PANEL_QUALITY ? "Đổi chất lượng mà tiếng vẫn chạy liền" : A.panel == PANEL_SPEED ? "Tiếng giữ đúng cao độ khi tua nhanh" : A.cur.title;
+    const char *title = A.panel == PANEL_QUALITY ? "Chất lượng video" : A.panel == PANEL_SPEED ? "Tốc độ phát" : A.panel == PANEL_DOWNLOAD ? "Tải về máy" :
+                        A.panel == PANEL_PLAYLIST ? "Thêm vào danh sách" : A.panel == PANEL_CHAPTERS ? "Chương" : A.panel == PANEL_FILTER ? "Bộ lọc tìm kiếm" : "Tùy chọn video";
+    char subb[300];
+    const char *sub = A.panel == PANEL_QUALITY ? "Đổi chất lượng mà tiếng vẫn chạy liền" : A.panel == PANEL_SPEED ? "Tiếng giữ đúng cao độ khi tua nhanh" :
+                      A.panel == PANEL_FILTER ? "Trái / Phải đổi · X bỏ hết lọc" : A.panel == PANEL_DOWNLOAD ? (snprintf(subb, sizeof(subb), T("File lưu ở %s"), Export_dir()), subb) : A.cur.title;
     D_text(F_XBOLD, 28, title, x + 20, 22, C_INK, 352, AL_LEFT);
     D_text(F_REG, 17, sub, x + 20, 62, C_MUTED, 352, AL_LEFT);
-    int n = A.panel == PANEL_QUALITY ? NQ : A.panel == PANEL_SPEED ? NS : options_count();
-    for (int i = 0; i < n; i++) {
-        int y = 96 + i * (n > 8 ? 62 : n > 7 ? 64 : 68);
+    int n = panel_rows();
+    const int rowh = 66, top = 96, vis = (SCREEN_H - 50 - top) / rowh;
+    if (A.panelSel < A.panelFirst) A.panelFirst = A.panelSel;
+    if (A.panelSel >= A.panelFirst + vis) A.panelFirst = A.panelSel - vis + 1;
+    if (A.panelFirst > 0 && n <= vis) A.panelFirst = 0;
+    if (A.panelFirst > 0) D_tri(x + 196 - 8, top - 4, x + 196 + 8, top - 4, x + 196, top - 12, C_MUTED);
+    if (A.panelFirst + vis < n) D_tri(x + 196 - 8, top + vis * rowh - 2, x + 196 + 8, top + vis * rowh - 2, x + 196, top + vis * rowh + 6, C_MUTED);
+    PlayerStatus pst; Player_status(&pst);
+    for (int i = A.panelFirst; i < n && i < A.panelFirst + vis; i++) {
+        int y = top + (i - A.panelFirst) * rowh;
         bool sel = i == A.panelSel, avail = A.panel != PANEL_QUALITY || quality_available(i);
         bool current = A.panel == PANEL_QUALITY ? i == A.quality : A.panel == PANEL_SPEED ? i == A.speedIx : false;
         char label[160], note[200];
         if (A.panel == PANEL_QUALITY) { snprintf(label, sizeof(label), "%s", T(QUALITY_LABEL[i])); snprintf(note, sizeof(note), "%s", avail ? T(QUALITY_NOTE[i]) : T("Video này không có")); }
+        else if (A.panel == PANEL_DOWNLOAD) { snprintf(label, sizeof(label), "%s", T(DL_LABEL[i])); snprintf(note, sizeof(note), "%s", T(DL_NOTE[i])); }
+        else if (A.panel == PANEL_PLAYLIST) {
+            if (i >= PL_count()) { snprintf(label, sizeof(label), "%s", T("+ Tạo danh sách mới")); snprintf(note, sizeof(note), "%s", T("Đặt tên rồi thêm video này vào")); }
+            else { snprintf(label, sizeof(label), "%s", T(PL_name(i))); snprintf(note, sizeof(note), T("%d video · A thêm / bỏ"), PL_list(i)->count); current = PL_has(i, A.cur.id); }
+        }
+        else if (A.panel == PANEL_CHAPTERS) {
+            char tm[24]; fmt_time(A.stream.chap[i].t, tm, sizeof(tm));
+            snprintf(label, sizeof(label), "%s", A.stream.chap[i].title); snprintf(note, sizeof(note), "%s", tm);
+            current = chapter_at(pst.position) == i;
+        }
+        else if (A.panel == PANEL_FILTER) {
+            static const char *L[5] = {"Thời gian tải lên", "Thời lượng", "Sắp xếp", "Chỉ video trực tiếp", "Áp dụng"};
+            snprintf(label, sizeof(label), "%s", T(L[i]));
+            snprintf(note, sizeof(note), "%s", i == 0 ? T(FDATE[A.fDate]) : i == 1 ? T(FDUR[A.fDur]) : i == 2 ? T(FSORT[A.fSort]) : i == 3 ? T(A.fLive ? "Bật" : "Tắt") : T("Tìm lại với bộ lọc này"));
+        }
         else if (A.panel == PANEL_SPEED) { snprintf(label, sizeof(label), "%s", SPEED_LABEL[i]); snprintf(note, sizeof(note), "%s", i == 2 ? T("Bình thường") : i == 0 ? T("Chậm") : i == 5 ? T("Nhanh") : ""); }
         else {
             switch (opt_id(i)) {
@@ -1931,7 +2539,20 @@ static void draw_panel(void) {
                 case 2: snprintf(label, sizeof(label), "%s", T("Nghe nền (chỉ tiếng)")); snprintf(note, sizeof(note), "%s", T("Về menu máy, tiếng vẫn phát · mở lại app để xem tiếp")); break;
                 case 3: snprintf(label, sizeof(label), "%s", Store_isLater(A.cur.id) ? T("Bỏ khỏi Xem sau") : T("Lưu vào Xem sau")); snprintf(note, sizeof(note), "%s", T("Thư viện › Xem sau")); break;
                 case 4: snprintf(label, sizeof(label), "%s", Store_isChannel(A.cur.channel_id) ? T("Bỏ theo dõi kênh") : T("Theo dõi kênh")); snprintf(note, sizeof(note), "%s", A.cur.channel); break;
-                case 5: snprintf(label, sizeof(label), "%s", Store_hasDownload(A.cur.id) ? T("Đã tải về máy") : Download_busy() ? T("Đang tải video khác…") : T("Tải về máy · 720p")); snprintf(note, sizeof(note), "%s", T("Xem lại không cần mạng")); break;
+                case OPT_DOWNLOAD: snprintf(label, sizeof(label), "%s", Download_busy() ? T("Đang tải video khác…") : T("Tải về · video, MP4, nhạc")); snprintf(note, sizeof(note), "%s", Store_hasDownload(A.cur.id) ? T("Đã có trong máy · A để lưu file") : T("Video 720p, file MP4, M4A, Opus, MP3")); break;
+                case OPT_REPEAT: snprintf(label, sizeof(label), "%s · %s", T("Lặp lại"), T(REPEAT_LABEL[A.repeat])); snprintf(note, sizeof(note), "%s", T("A / Trái / Phải: tắt, 1 video, cả danh sách, ngẫu nhiên")); break;
+                case OPT_AB: {
+                    char a1[16], b1[16]; fmt_time(A.abA, a1, sizeof(a1)); fmt_time(A.abB, b1, sizeof(b1));
+                    if (A.abA < 0) { snprintf(label, sizeof(label), "%s", T("Lặp đoạn A–B")); snprintf(note, sizeof(note), "%s", T("A: đặt điểm A ở chỗ đang phát")); }
+                    else if (A.abB < 0) { snprintf(label, sizeof(label), T("A–B · A = %s"), a1); snprintf(note, sizeof(note), "%s", T("A: đặt điểm B ở chỗ đang phát")); }
+                    else { snprintf(label, sizeof(label), T("A–B · %s – %s"), a1, b1); snprintf(note, sizeof(note), "%s", T("A: tắt lặp đoạn")); }
+                    break; }
+                case OPT_CHAPTERS: { int c = chapter_at(pst.position); snprintf(label, sizeof(label), T("Chương (%d)"), A.stream.nchap); snprintf(note, sizeof(note), "%s", c >= 0 ? A.stream.chap[c].title : ""); break; }
+                case OPT_BOOST: snprintf(label, sizeof(label), T("Âm lượng · %d%%%s"), 100 + 50 * S.boost, S.voice ? T(" · giọng rõ") : ""); snprintf(note, sizeof(note), "%s", T("Trái / Phải hoặc A đổi · tăng cho video tiếng nhỏ")); break;
+                case OPT_LOCK: snprintf(label, sizeof(label), "%s", T("Khóa phím")); snprintf(note, sizeof(note), "%s", T("Bỏ túi không lo bấm nhầm · SELECT ×3 để mở")); break;
+                case OPT_MUSIC: { bool on = !strcmp(QUALITY_ID[A.quality], "audio");
+                    snprintf(label, sizeof(label), "%s", on ? T("Bật lại hình") : T("Chế độ nghe nhạc")); snprintf(note, sizeof(note), "%s", on ? T("Quay về chất lượng trước đó") : T("Tắt hình, màn hình nhạc · mát máy, pin lâu")); break; }
+                case OPT_PLAYLIST: snprintf(label, sizeof(label), "%s", T("Thêm vào danh sách phát")); snprintf(note, sizeof(note), "%s", T("Yêu thích và danh sách của bạn · Thư viện")); break;
                 default: snprintf(label, sizeof(label), "%s", A.stats ? T("Ẩn thông tin luồng") : T("Hiện thông tin luồng")); snprintf(note, sizeof(note), "%s", T("Bộ đệm, khung hình, lệch tiếng–hình")); break;
             }
         }
@@ -1942,7 +2563,7 @@ static void draw_panel(void) {
         D_text(F_BOLD, 21, label, x + 70, y + (note[0] ? 6 : 16), fg, 290, AL_LEFT);
         if (note[0]) D_text(F_REG, 15, note, x + 70, y + 35, sub2, 290, AL_LEFT);
     }
-    D_text(F_MED, 17, "Lên/Xuống chọn · A Áp dụng · B Đóng", x + 20, SCREEN_H - 40, C_MUTED, 0, AL_LEFT);
+    D_text(F_MED, 17, A.panel == PANEL_DOWNLOAD || A.panel == PANEL_PLAYLIST || A.panel == PANEL_CHAPTERS ? "Lên/Xuống chọn · A Chọn · B Quay lại" : "Lên/Xuống chọn · A Áp dụng · B Đóng", x + 20, SCREEN_H - 40, C_MUTED, 0, AL_LEFT);
 }
 static void draw_subs(const PlayerStatus *st, int cx, int bottom, int max_w, bool full) {
     if (st->state == PS_IDLE || st->state == PS_ERROR || A.watchErr[0]) return;
@@ -1959,10 +2580,10 @@ static void draw_watch(void) {
     SDL_Rect a = {24, 24, 640, 360};
     SDL_Texture *t; int w, h;
     Player_present(A.ren, &t, &w, &h);
-    if (st.audio_only || !t || st.state == PS_IDLE) {
+    if (st.audio_only && st.state != PS_IDLE && st.state != PS_ERROR && !A.watchErr[0]) draw_music(a, &st, false);
+    else if (st.audio_only || !t || st.state == PS_IDLE) {
         D_rect(a.x, a.y, a.w, a.h, RGBA(0x12, 0x0F, 0x18, 255));
         D_thumb(A.cur.id, (SDL_Rect){a.x + 160, a.y + 60, 320, 180}, RGBA(0x12, 0x0F, 0x18, 255));
-        if (st.audio_only && st.state != PS_IDLE && st.state != PS_ERROR && !A.watchErr[0]) D_text(F_SEMI, 20, "Chỉ âm thanh · không giải mã hình", a.x + a.w / 2, a.y + 262, C_MUTED, 0, AL_CENTER);
     } else D_video(t, w, h, a);
     draw_player_overlays(a, &st, false);
     draw_subs(&st, a.x + a.w / 2, a.y + a.h - 92, a.w - 40, false);
@@ -2038,10 +2659,10 @@ static void draw_full(void) {
     SDL_Rect a = {0, (SCREEN_H - fvh) / 2, SCREEN_W, fvh};
     SDL_Texture *t; int w, h;
     Player_present(A.ren, &t, &w, &h);
-    if (st.audio_only || !t) {
+    if (st.audio_only && st.state != PS_IDLE && st.state != PS_ERROR && !A.watchErr[0]) draw_music((SDL_Rect){0, 0, SCREEN_W, SCREEN_H}, &st, true);
+    else if (st.audio_only || !t) {
         D_rect(a.x, a.y, a.w, a.h, RGBA(0x12, 0x0F, 0x18, 255));
-        D_thumb(A.cur.id, (SDL_Rect){352, 260, 320, 180}, RGBA(0x12, 0x0F, 0x18, 255));
-        if (st.audio_only && st.state != PS_IDLE && st.state != PS_ERROR && !A.watchErr[0]) D_text(F_BOLD, 24, "Chỉ âm thanh · tiết kiệm pin", SCREEN_CX, 470, C_INK, 0, AL_CENTER);
+        D_thumb(A.cur.id, (SDL_Rect){SCREEN_CX - 160, 260, 320, 180}, RGBA(0x12, 0x0F, 0x18, 255));
     } else D_videoNative(t, w, h);
     Uint32 now = SDL_GetTicks();
     bool osd = A.osd && (now < A.osdUntil || st.state != PS_PLAYING || A.panel);
@@ -2739,8 +3360,27 @@ static void update(void) {
         A.endedHandled = true;
         Store_addHistory(&A.cur, st.duration, st.duration); Store_save();
         if (A.sleepMode && SLEEP_MIN[A.sleepMode] < 0) sleep_fire();
-        else if (S.autoplay && A.qpos + 1 < A.queue.count) { toast("Video tiếp theo: %s", A.queue.items[A.qpos + 1].title); play_index(A.qpos + 1); }
+        else if (A.repeat == 1) { if (A.qpos >= 0 && A.qpos < A.queue.count && !strcmp(A.queue.items[A.qpos].id, A.cur.id)) play_index(A.qpos); else { VideoItem v = A.cur; open_video(&v, NULL, A.qpos); } }
+        else if (A.repeat == 3 && A.queue.count > 1) { int n; do n = rand() % A.queue.count; while (n == A.qpos); play_index(n); }
+        else if (A.qpos + 1 < A.queue.count && (S.autoplay || A.repeat == 2)) { toast("Video tiếp theo: %s", A.queue.items[A.qpos + 1].title); play_index(A.qpos + 1); }
+        else if (A.repeat == 2 && A.queue.count) play_index(0);
     }
+    if (A.hasCur && st.state == PS_PLAYING && !st.live) {
+        /* A–B loop */
+        if (A.abB > 0 && st.position >= A.abB && !A.seekPending) Player_seek(A.abA);
+        /* SponsorBlock: jump over marked segments once each (or just say so) */
+        SponsorSeg seg[24]; int ns = S.sponsor ? Sponsor_get(A.cur.id, seg, 24) : 0;
+        for (int i = 0; i < ns && i < 32; i++) {
+            if (A.sponsorDone & (1u << i)) continue;
+            if (st.position >= seg[i].start && st.position < seg[i].end - 0.6) {
+                A.sponsorDone |= 1u << i;
+                if (S.sponsor == 1 && !A.seekPending) { Player_seek(seg[i].end); toast("Đã bỏ qua %s (%d giây)", T(Sponsor_catName(seg[i].cat)), (int)(seg[i].end - seg[i].start + 0.5)); }
+                else toast("Đang ở %s · %d giây", T(Sponsor_catName(seg[i].cat)), (int)(seg[i].end - st.position + 0.5));
+            }
+        }
+    }
+    { char dm[300]; if (Download_finishedMsg(dm, sizeof(dm))) toast("%s", dm); }
+    newvideo_tick(now);
     sleep_tick(now);
     /* suggestions after the current video: top up the queue when it runs short */
     if (A.hasCur) {
@@ -2783,7 +3423,7 @@ static void update(void) {
     /* Prefetch: the item under the cursor (after a short rest) and the next few,
      * so pressing A starts at once. Paused while a video decodes. */
     bool decoding = st.state == PS_PLAYING && !st.audio_only;
-    if (A.hidden || decoding || !S.prefetch) return;
+    if (A.hidden || decoding || !S.prefetch || saver_active()) return;
     const VideoList *list = NULL; int at = -1;
     if (A.screen == SC_HOME && A.focus == 0) { list = &A.feed[A.tab].list; at = A.sel; }
     else if (A.screen == SC_SEARCH && A.results) { list = &A.found; at = A.resultSel; }
@@ -2956,6 +3596,7 @@ int main(int argc, char **argv) {
 #endif
     open_joystick();
     char res[1200]; snprintf(res, sizeof(res), "%s/res", paths.app);
+    D_setTheme(S.theme);
     if (!D_init(A.ren, res)) { Log_msg("fonts missing in %s", res); }
     Store_init();
     Account_init();
@@ -2974,6 +3615,7 @@ int main(int argc, char **argv) {
 #endif
     Player_init(S.audio_out);
     Player_setFull60(S.fps60);
+    Player_setBoost(S.boost, S.voice);
     Sys_applyGain();
     A.lastVol = Sys_volume();
     Player_setAvOffset(S.av_offset_ms);
@@ -2982,6 +3624,7 @@ int main(int argc, char **argv) {
     Ota_init();
     Thumbs_init(A.ren);
     A.screen = SC_HOME; A.keySel = 10;
+    chips_build();
     load_feed(0, false);
     bool pacing_off = (getenv("NXT_TUBE_KEYS") || getenv("NXT_TUBE_SHOT")) && !getenv("NXT_TUBE_PACE");   /* QA replays count frames */
     Uint32 draws = 0, draws_at = SDL_GetTicks();

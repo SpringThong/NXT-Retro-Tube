@@ -1,9 +1,48 @@
-# NXT Retro Tube 2.3.9 — NX Redux (TrimUI Brick Pro)
+# NXT Retro Tube 2.3.10 — NX Redux (TrimUI Brick Pro)
 
 ## Cài đặt
 Chép thư mục `Tools/NXT Retro Tube.pak` vào `Tools/` trên thẻ nhớ (chép đè nếu đã có bản cũ). Mở từ Tools.
 
 Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/shared/nxt-retro-tube`.
+
+## Mới ở 2.3.10 (bản thử nghiệm cho 2.4)
+**Xem tiếp từ thiết bị khác**
+- Tab mới **"Xem tiếp"** ở Trang chủ. Đã đăng nhập Google: là lịch sử xem của tài khoản (điện thoại, web, TV), mỗi video có vạch đỏ chỗ đã xem tới.
+  Mở video là phát tiếp từ chỗ đó (lùi 3 giây), có thông báo "Xem tiếp từ …". Chưa đăng nhập: các video xem dở trên máy này.
+
+**Giao diện (Cài đặt → Màu giao diện, Cài đặt → Tùy biến giao diện)**
+- 6 bộ màu: Retro cam, YouTube đỏ, Đại dương, Rừng xanh, Neon hồng, Đen tuyền.
+- Đặt **tên ứng dụng** riêng ở góc trên.
+- **Tab trang chủ:** ẩn/hiện (A), đổi thứ tự (L1/R1 hoặc Trái/Phải), Y = thứ tự mặc định; thêm tối đa **4 tab từ khóa của bạn** (A gõ từ khóa, X xóa).
+- Ẩn/hiện từng biểu tượng trên thanh trạng thái (pin, Wi-Fi, Bluetooth, đồng hồ, DAC).
+
+**Tải về & file (SELECT → Tải về)**
+- Video 720p (xem trong app như trước) · **Video + lưu file MP4** · **Nhạc M4A** · **Nhạc Opus** · **Nhạc MP3 128 kbps**.
+- File có tên dễ đọc ("Tên video.mp4", ".m4a", ".opus", ".mp3", có tên kênh trong thẻ) nằm ở thư mục **`NXT Tube`** ngay gốc thẻ nhớ
+  (`/mnt/SDCARD/NXT Tube`) — mở được bằng máy tính, app nghe nhạc khác. MP3 được chuyển trên máy (bộ mã hóa shine), mất khoảng ⅓ thời lượng bài.
+- Cài đặt → **Xuất video & nhạc đã tải**: chép mọi thứ đã tải trước đó ra thư mục này.
+
+**Khi xem video (SELECT → Tùy chọn video, danh sách dài thì cuộn)**
+- **Bỏ qua quảng cáo trong video (SponsorBlock)**: Cài đặt → Tự bỏ qua / Chỉ báo / Tắt. Đoạn tài trợ hiện màu xanh lá trên thanh tua.
+- **Chương**: video có mốc thời gian trong mô tả có vạch chia trên thanh tua, tên chương khi tua, bảng **Chương** để nhảy.
+- **Xem trước khi tua**: bấm Trái/Phải/L2/R2 hiện ảnh nhỏ tại chỗ sẽ tới (ảnh xem trước của YouTube).
+- **Lặp lại**: 1 video / cả danh sách / ngẫu nhiên. **Lặp đoạn A–B** (chọn 2 lần để đặt A rồi B).
+- **Âm lượng 100–250%** có chống vỡ tiếng, **Giọng nói rõ** (Cài đặt).
+- **Khóa phím** khi bỏ túi: bấm SELECT 3 lần để mở.
+- **Chế độ nghe nhạc**: tắt hình, màn hình đĩa nhạc với ảnh bìa, tên chương — mát máy, pin lâu.
+- **Tiết kiệm pin tự động** (Cài đặt, mặc định bật): pin dưới 20% và không cắm sạc thì tối đa 480p 30 hình, không lấy luồng trước.
+
+**Danh sách phát**
+- SELECT → **Thêm vào danh sách phát**: "Yêu thích" + tối đa 7 danh sách tự đặt tên. Xem ở Thư viện (các tab sau "Đã tải");
+  X bỏ video khỏi danh sách, START hai lần xóa danh sách.
+
+**Kênh & tìm kiếm**
+- **Báo video mới**: mỗi 2 giờ (có Wi-Fi) app xem kênh theo dõi có video mới không; tab Kênh hiện "· N mới", kênh có video mới ghi "N video mới".
+  Không kiểm tra khi đang xem video HD (đỡ nóng máy).
+- **Tự tải video mới khi sạc** (Cài đặt, mặc định tắt): đang cắm sạc + Wi-Fi thì tải video mới nhất của kênh theo dõi (480p, tối đa 5/ngày).
+- **Bộ lọc tìm kiếm**: ở kết quả tìm bấm SELECT — thời gian tải lên, thời lượng, sắp xếp (mới nhất, nhiều lượt xem…), chỉ video trực tiếp.
+- **Nhập kênh từ Google Takeout**: tải Takeout (YouTube → đăng ký) trên máy tính, chép `subscriptions.csv` vào thư mục `NXT Tube` trên thẻ,
+  rồi Cài đặt → Nhập kênh từ Google Takeout → A.
 
 ## Mới ở 2.3.9 (bản thử nghiệm cho 2.4)
 - **Đăng nhập tài khoản Google:** Cài đặt → **Tài khoản Google** → A. Máy hiện mã và mã QR; trên điện thoại mở **google.com/device**
