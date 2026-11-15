@@ -7,8 +7,11 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm �
 
 ## Mới ở 2.4.1 (bản thử)
 - **Điều khiển bằng điện thoại**: máy đóng vai một chiếc TV cho app YouTube trên điện thoại. Cài đặt → Tài khoản & kênh →
-  Điều khiển bằng điện thoại → A lấy mã 12 số → trên điện thoại: app YouTube › ảnh đại diện › Cài đặt › Xem trên TV ›
-  Liên kết bằng mã TV. Sau đó bấm nút truyền (cast) trong video, chọn "NXT Retro Tube": video phát trên máy, điện thoại
+  Điều khiển bằng điện thoại → A lấy mã 12 số → nhập mã trên điện thoại:
+  **Android**: app YouTube › ảnh đại diện › Cài đặt › Xem trên TV › Liên kết bằng mã TV.
+  **iPhone / iPad**: bấm nút truyền (cast, hình màn hình có sóng) ở đầu app › Liên kết bằng mã TV (Add a device).
+  Nếu iPhone không hiện nút truyền: Cài đặt iPhone › Quyền riêng tư & Bảo mật › Mạng cục bộ › bật cho YouTube.
+  Sau đó bấm nút truyền trong video, chọn "NXT Retro Tube": video phát trên máy, điện thoại
   điều khiển phát / dừng / tua / bài tiếp. Không cần đăng nhập trên máy.
 - **Lịch sử xem về tài khoản Google** (khi đã đăng nhập, Cài đặt → Tài khoản & kênh, mặc định bật): video xem trên máy hiện
   trong lịch sử YouTube và "Tiếp tục xem" trên điện thoại / web, đúng chỗ đang dừng.

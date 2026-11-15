@@ -610,7 +610,7 @@ static const char *const PAIRS[][2] = {
     {"Ghép với app YouTube trên điện thoại như một chiếc TV: chọn video trên điện thoại là máy phát, điện thoại làm điều khiển · A lấy mã ghép nối", "Pair with the YouTube app on a phone like a TV: pick a video on the phone and it plays here, the phone is the remote · A gets a pairing code"},
     {"Mã ghép nối TV", "TV pairing code"},
     {"Đang lấy mã…", "Getting a code…"},
-    {"Trên điện thoại: mở app YouTube › ảnh đại diện › Cài đặt › Xem trên TV › Liên kết bằng mã TV › nhập mã này. Sau đó bấm nút truyền (cast) trong video và chọn “NXT Retro Tube”. Lần sau chỉ cần bấm nút truyền, không cần mã nữa.", "On the phone: YouTube app › your picture › Settings › Watch on TV › Link with TV code › enter this code. Then tap the cast button in a video and choose “NXT Retro Tube”. Next time just tap cast, no code needed."},
+    {"Android: app YouTube › ảnh đại diện › Cài đặt › Xem trên TV › Liên kết bằng mã TV. iPhone: bấm nút truyền (cast) ở đầu app › Liên kết bằng mã TV (Add a device). Nhập mã này, rồi chọn “NXT Retro Tube”. Lần sau chỉ cần bấm nút truyền.", "Android: YouTube app › your picture › Settings › Watch on TV › Link with TV code. iPhone: tap the cast button at the top of the app › Link with TV code (Add a device). Enter this code, then choose “NXT Retro Tube”. Next time just tap cast."},
     {"Đã kết nối: %s", "Connected: %s"},
     {"điện thoại", "phone"},
     {"Chưa có điện thoại nào kết nối", "No phone connected yet"},
