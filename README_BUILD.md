@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.3.10 — mã nguồn
+# NXT Retro Tube 2.3.11 — mã nguồn
 
 **Tác giả:** Nguyễn Xuân Thông
 **Ủng hộ tác giả:** MoMo 0339838267 · Vietcombank (VCB) 0581000786219 · PayPal thongkhung2@gmail.com
@@ -36,6 +36,11 @@ Mã ROM chọn lúc biên dịch: `-DNXT_TUBE_ROM_NXREDUX | NEXTUI | STOCK | MUO
 - Tìm kiếm InnerTube gửi `context.user.enableSafetyMode = true` (Chế độ hạn chế của YouTube) khi bật.
 - Lọc: `Kids_allowed()` áp vào trang chủ, kết quả tìm, trang kênh, hàng "Tiếp theo" và khi mở video; từ khóa so khớp sau khi bỏ dấu tiếng Việt.
 - Giao diện trong `src/main.c`: trang Cài đặt → Chế độ trẻ em (`SC_KIDS`), hộp nhập PIN, màn khóa hết giờ / ngoài giờ, màn nghỉ mắt.
+
+## Mới ở 2.3.11 (thử nghiệm)
+- `draw.c`: chữ Hàn/Nhật/Trung/Thái trong `D_text`/`D_textW` vẽ theo từng đoạn chữ (`split_runs`, `render_runs`) bằng gói phông Noto của phụ đề; tự tải gói khi cần (`want_pack`), xóa bộ nhớ chữ khi gói tải xong. `subs.c`: bộ đệm tải riêng cho mỗi gói (trước đây dùng chung nên tải hai gói cùng lúc bị sai checksum), `Subs_packReady` chỉ xem thẻ nhớ mỗi 3 giây.
+- `account.c`: nhận cả `reloadContinuationData`, đi tiếp tới 4 trang không có video mới, ghi log lý do dừng. `main.c`: `Feed.fallback` — hết feed tài khoản thì nối gợi ý của app.
+- Bỏ tải ảnh storyboard khi tua (`Preview_set` không còn được gọi).
 
 ## Mới ở 2.3.10 (thử nghiệm, nhánh thu-nghiem-2.4)
 - Hàng tab trang chủ là danh mục `CH_*` (`chips_build()`, `S.chip_order`/`chip_hidden`/`custom_chip`), tab "Xem tiếp" = `@yt:FEhistory` (đăng nhập) hoặc `@local:continue`.

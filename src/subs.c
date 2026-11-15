@@ -57,6 +57,11 @@ bool Subs_packReady(int p) {
     if (p <= 0) return true;
     if (p >= NPACKS) return false;
     if (pack_ok[p]) return true;
+    /* titles ask this for every character: look at the card at most every 3 s */
+    static Uint32 checked[NPACKS];
+    Uint32 now = SDL_GetTicks();
+    if (checked[p] && now - checked[p] < 3000) return false;
+    checked[p] = now ? now : 1;
     char f[1300]; pack_file(p, f, sizeof(f));
     struct stat st;
     pack_ok[p] = !stat(f, &st) && st.st_size == PACKS[p].size;   /* verified with SHA-256 when it was saved */
@@ -85,14 +90,15 @@ static void *pack_thread(void *arg) {
         FILE *out = fopen(tmp, "wb");
         if (!out) { avio_closep(&io); break; }
         mbedtls_sha256_context sh; mbedtls_sha256_init(&sh); mbedtls_sha256_starts(&sh, 0);
-        static unsigned char buf[65536]; long got = 0;
+        unsigned char *buf = malloc(65536); long got = 0;   /* per download: two packs may come at once */
+        if (!buf) { fclose(out); avio_closep(&io); break; }
         for (;;) {
-            int n = avio_read(io, buf, sizeof(buf));
+            int n = avio_read(io, buf, 65536);
             if (n <= 0) break;
             fwrite(buf, 1, n, out); mbedtls_sha256_update(&sh, buf, n); got += n;
             pack_progress[p] = (int)(got * 100 / PACKS[p].size); if (pack_progress[p] > 99) pack_progress[p] = 99;
         }
-        avio_closep(&io); fclose(out);
+        avio_closep(&io); fclose(out); free(buf);
         unsigned char d[32]; char hex[65]; mbedtls_sha256_finish(&sh, d); mbedtls_sha256_free(&sh);
         for (int i = 0; i < 32; i++) sprintf(hex + i * 2, "%02x", d[i]);
         ok = got == PACKS[p].size && !strcmp(hex, PACKS[p].sha);

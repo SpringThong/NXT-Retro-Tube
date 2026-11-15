@@ -1,9 +1,17 @@
-# NXT Retro Tube 2.3.10 — NX Redux (TrimUI Brick Pro)
+# NXT Retro Tube 2.3.11 — NX Redux (TrimUI Brick Pro)
 
 ## Cài đặt
 Chép thư mục `Tools/NXT Retro Tube.pak` vào `Tools/` trên thẻ nhớ (chép đè nếu đã có bản cũ). Mở từ Tools.
 
 Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/shared/nxt-retro-tube`.
+
+## Mới ở 2.3.11 (sửa lỗi bản thử 2.3.10)
+- **Tên video tiếng Hàn, Nhật, Trung, Thái** hiện đúng chữ (trước đây ra ô vuông). Lần đầu gặp, app tự tải phông chữ của ngôn ngữ đó
+  một lần (Thái ~0,2 MB, Hàn ~10 MB, Nhật ~10 MB, Trung ~17 MB, cần Wi-Fi), tải xong tên tự hiện lại. Phần chữ Việt / Latinh trong tên vẫn dùng phông của app.
+- **Dành cho bạn / Đăng ký / Xem tiếp** cuộn được lâu hơn: app đi tiếp qua các trang YouTube trả về trùng hoặc toàn Shorts (tới 4 trang liền)
+  thay vì dừng; khi "Dành cho bạn" / "Đăng ký" của tài khoản thật sự hết, danh sách vẫn chạy tiếp bằng gợi ý của app
+  (theo từ khóa đã tìm, kênh đã xem; với "Đăng ký" là video mới của chính các kênh đó).
+- **Bỏ ảnh nhỏ khi tua** (không tải ảnh, đỡ tốn mạng và đỡ nóng máy). Khi tua chỉ hiện tên chương nếu video có chương.
 
 ## Mới ở 2.3.10 (bản thử nghiệm cho 2.4)
 **Xem tiếp từ thiết bị khác**
@@ -25,7 +33,6 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm �
 **Khi xem video (SELECT → Tùy chọn video, danh sách dài thì cuộn)**
 - **Bỏ qua quảng cáo trong video (SponsorBlock)**: Cài đặt → Tự bỏ qua / Chỉ báo / Tắt. Đoạn tài trợ hiện màu xanh lá trên thanh tua.
 - **Chương**: video có mốc thời gian trong mô tả có vạch chia trên thanh tua, tên chương khi tua, bảng **Chương** để nhảy.
-- **Xem trước khi tua**: bấm Trái/Phải/L2/R2 hiện ảnh nhỏ tại chỗ sẽ tới (ảnh xem trước của YouTube).
 - **Lặp lại**: 1 video / cả danh sách / ngẫu nhiên. **Lặp đoạn A–B** (chọn 2 lần để đặt A rồi B).
 - **Âm lượng 100–250%** có chống vỡ tiếng, **Giọng nói rõ** (Cài đặt).
 - **Khóa phím** khi bỏ túi: bấm SELECT 3 lần để mở.

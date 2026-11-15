@@ -30,7 +30,8 @@ bool D_init(SDL_Renderer *r, const char *res_dir);
 void D_setRenderer(SDL_Renderer *r);   /* after the display was re-created */
 void D_dropTextures(void);             /* before the renderer is destroyed */
 void D_quit(void);
-void D_frame(void);                   /* advance cache clock */
+void D_frame(void);
+int D_takePackNote(void);           /* a font pack for Korean/Japanese/Chinese/Thai titles just started downloading */                   /* advance cache clock */
 SDL_Renderer *D_renderer(void);
 
 void D_rect(int x, int y, int w, int h, SDL_Color c);

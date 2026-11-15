@@ -75,6 +75,130 @@ static TTF_Font *font(FontFace f, int size) {
 }
 int D_fontHeight(FontFace f, int size) { TTF_Font *t = font(f, size); return t ? TTF_FontHeight(t) : size; }
 
+/* ---------- Korean / Japanese / Chinese / Thai in titles ----------
+ * Be Vietnam Pro has no Hangul, kana, Han or Thai. Runs in those scripts are drawn with the matching
+ * Noto font pack (the same packs the subtitles use, downloaded once into the data folder); the rest of
+ * the line keeps the app font, so mixed titles ("BTS 'Dynamite' 공식 뮤비") look right. */
+enum { PK_NONE = 0, PK_KR = 1, PK_JP = 2, PK_SC = 3, PK_TH = 4 };
+static unsigned utf8_cp(const char *s, int *len) {
+    const unsigned char *u = (const unsigned char *)s;
+    if (u[0] < 0x80) { *len = 1; return u[0]; }
+    if ((u[0] & 0xE0) == 0xC0 && u[1]) { *len = 2; return (u[0] & 0x1F) << 6 | (u[1] & 0x3F); }
+    if ((u[0] & 0xF0) == 0xE0 && u[1] && u[2]) { *len = 3; return (u[0] & 0x0F) << 12 | (u[1] & 0x3F) << 6 | (u[2] & 0x3F); }
+    if ((u[0] & 0xF8) == 0xF0 && u[1] && u[2] && u[3]) { *len = 4; return (u[0] & 0x07) << 18 | (u[1] & 0x3F) << 12 | (u[2] & 0x3F) << 6 | (u[3] & 0x3F); }
+    *len = 1; return u[0];
+}
+/* 0 = the app font draws it; -1 = neutral (space, digits, punctuation: stays with the run it is in) */
+static int cp_script(unsigned c) {
+    if (c < 0x80) return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ? 0 : -1;
+    if (c >= 0xAC00 && c <= 0xD7AF) return PK_KR;
+    if ((c >= 0x1100 && c <= 0x11FF) || (c >= 0x3130 && c <= 0x318F)) return PK_KR;
+    if (c >= 0x3040 && c <= 0x30FF) return PK_JP;
+    if ((c >= 0x31F0 && c <= 0x31FF) || (c >= 0xFF66 && c <= 0xFF9F)) return PK_JP;
+    if ((c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF) || (c >= 0x3000 && c <= 0x303F) || (c >= 0xFF01 && c <= 0xFF60)) return PK_SC;
+    if (c >= 0x0E00 && c <= 0x0E7F) return PK_TH;
+    return 0;
+}
+static bool needs_packs(const char *s) {
+    for (const unsigned char *u = (const unsigned char *)s; *u; u++) if (*u >= 0xE0) { int l; const char *p = (const char *)u; if (cp_script(utf8_cp(p, &l)) > 0) return true; }
+    return false;
+}
+/* Han characters: the Chinese pack, or Japanese / Korean when that is what is installed (they carry kanji / hanja) */
+static int han_pack(int ctx) {
+    if (ctx == PK_JP || ctx == PK_KR) return ctx;
+    if (Subs_packReady(PK_SC)) return PK_SC;
+    if (Subs_packReady(PK_JP)) return PK_JP;
+    if (Subs_packReady(PK_KR)) return PK_KR;
+    return PK_SC;
+}
+static unsigned packs_seen, packs_asked; static int pack_note;
+static void want_pack(int p) {
+    packs_seen |= 1u << p;
+    if (Subs_packReady(p) || (packs_asked & (1u << p))) return;
+    packs_asked |= 1u << p;
+    if (Subs_packDownload(p)) { Log_msg("font pack %s needed for a title: downloading", Subs_packName(p)); pack_note = p; }
+}
+int D_takePackNote(void) { int p = pack_note; pack_note = 0; return p; }
+static unsigned packs_ready_mask(void) { unsigned m = 0; for (int p = 1; p <= 4; p++) if ((packs_seen & (1u << p)) && Subs_packReady(p)) m |= 1u << p; return m; }
+typedef struct { int pack; FontFace f; int size; TTF_Font *font; } PackSlot;
+static PackSlot pfonts[24]; static int npfonts;
+static TTF_Font *pack_font(int pack, FontFace f, int size) {
+    if (!Subs_packReady(pack)) return NULL;
+    int inst = pack == PK_TH ? 5 : f == F_REG || f == F_PIXEL ? 4 : f == F_MED || f == F_SUB ? 5 : f == F_SEMI ? 6 : f == F_BOLD ? 7 : 8;
+    for (int i = 0; i < npfonts; i++) if (pfonts[i].pack == pack && pfonts[i].f == f && pfonts[i].size == size) return pfonts[i].font;
+    long idx = 0; char codes[5][4] = {"", "ko", "ja", "zh", "th"};
+    const char *path = Subs_fontFor(codes[pack], &idx);
+    if (!path) return NULL;
+    int sz = f == F_PIXEL ? size * 3 / 4 : size;   /* VT323 runs large for its size */
+    TTF_Font *t = TTF_OpenFontIndex(path, sz, (long)inst << 16);
+    if (!t) t = TTF_OpenFontIndex(path, sz, idx);
+    if (!t) { Log_msg("font %s: %s", path, TTF_GetError()); return NULL; }
+    TTF_SetFontHinting(t, TTF_HINTING_LIGHT);
+    if (npfonts < 24) pfonts[npfonts++] = (PackSlot){pack, f, size, t};
+    else { TTF_CloseFont(pfonts[0].font); memmove(&pfonts[0], &pfonts[1], 23 * sizeof(PackSlot)); pfonts[23] = (PackSlot){pack, f, size, t}; }
+    return t;
+}
+/* split into runs: {start, len, pack} (pack 0 = the app font) */
+typedef struct { int start, len, pack; } Run;
+static int split_runs(const char *s, Run *runs, int max) {
+    int n = 0, i = 0, cur = 0, slen = (int)strlen(s);
+    /* Han characters and CJK punctuation follow the language of the line: kana = Japanese, Hangul = Korean */
+    int ctx = 0;
+    for (int k = 0; k < slen && !ctx; ) { int l; int sc = cp_script(utf8_cp(s + k, &l)); if (sc == PK_JP || sc == PK_KR) ctx = sc; k += l; }
+    while (i < slen) {
+        int l; unsigned c = utf8_cp(s + i, &l); int sc = cp_script(c);
+        if (sc == PK_SC) sc = han_pack(ctx);
+        if (sc > 0) { want_pack(sc); if (!Subs_packReady(sc)) sc = 0; else ctx = sc; }
+        if (sc < 0) sc = n ? runs[n - 1].pack : 0;   /* neutral: joins the current run */
+        if (!n || runs[n - 1].pack != sc) {
+            if (n == max) { runs[n - 1].len += l; i += l; continue; }
+            runs[n++] = (Run){i, 0, sc};
+        }
+        runs[n - 1].len += l; i += l;
+        (void)cur;
+    }
+    return n;
+}
+static int runs_width(FontFace f, int size, const char *s, TTF_Font *base) {
+    Run r[32]; int n = split_runs(s, r, 32), w = 0;
+    char tmp[1024];
+    for (int k = 0; k < n; k++) {
+        TTF_Font *ft = r[k].pack ? pack_font(r[k].pack, f, size) : base; if (!ft) ft = base;
+        snprintf(tmp, sizeof(tmp), "%.*s", r[k].len, s + r[k].start);
+        int ww = 0, hh = 0; TTF_SizeUTF8(ft, tmp, &ww, &hh); w += ww;
+    }
+    return w;
+}
+static SDL_Surface *render_runs(FontFace f, int size, const char *s, SDL_Color c, TTF_Font *base) {
+    Run r[32]; int n = split_runs(s, r, 32);
+    if (n <= 1 && (!n || !r[0].pack)) return TTF_RenderUTF8_Blended(base, s, c);
+    SDL_Surface *part[32]; int asc[32], W = 0, maxasc = TTF_FontAscent(base), maxdesc = -TTF_FontDescent(base);
+    char tmp[1024];
+    for (int k = 0; k < n; k++) {
+        TTF_Font *ft = r[k].pack ? pack_font(r[k].pack, f, size) : base; if (!ft) ft = base;
+        snprintf(tmp, sizeof(tmp), "%.*s", r[k].len, s + r[k].start);
+        part[k] = TTF_RenderUTF8_Blended(ft, tmp, c);
+        asc[k] = TTF_FontAscent(ft);
+        if (part[k]) { W += part[k]->w; if (asc[k] > maxasc) maxasc = asc[k]; if (part[k]->h - asc[k] > maxdesc) maxdesc = part[k]->h - asc[k]; }
+    }
+    int H = maxasc + maxdesc; if (H < TTF_FontHeight(base)) H = TTF_FontHeight(base);
+    SDL_Surface *out = W > 0 ? SDL_CreateRGBSurfaceWithFormat(0, W, H, 32, SDL_PIXELFORMAT_ARGB8888) : NULL;
+    int x = 0;
+    for (int k = 0; k < n; k++) {
+        if (!part[k]) continue;
+        if (out) { SDL_SetSurfaceBlendMode(part[k], SDL_BLENDMODE_NONE); SDL_BlitSurface(part[k], NULL, out, &(SDL_Rect){x, maxasc - asc[k], part[k]->w, part[k]->h}); }
+        x += part[k]->w; SDL_FreeSurface(part[k]);
+    }
+    return out;
+}
+static void flush_text_cache(void);
+static void packs_check(void) {
+    static unsigned last; static unsigned tick;
+    if (!packs_seen || ++tick % 30) return;
+    unsigned m = packs_ready_mask();
+    if (m != last) { last = m; flush_text_cache(); }   /* a pack just arrived: redraw titles with it */
+}
+
 /* ---------- text cache ---------- */
 typedef struct { char *s; FontFace f; int size; Uint32 rgba; SDL_Texture *tex; int w, h; unsigned used; } TextSlot;
 #define TEXT_N 384
@@ -90,7 +214,7 @@ static SDL_Texture *text_tex(FontFace f, int size, const char *s, SDL_Color c, i
         if (!texts[i].tex) victim = i; else if (texts[victim].tex && texts[i].used < texts[victim].used) victim = i;
     }
     TTF_Font *ft = font(f, size); if (!ft) return NULL;
-    SDL_Surface *surf = TTF_RenderUTF8_Blended(ft, s, c);
+    SDL_Surface *surf = f != F_SUB && needs_packs(s) ? render_runs(f, size, s, c, ft) : TTF_RenderUTF8_Blended(ft, s, c);
     if (!surf) return NULL;
     SDL_Texture *tex = SDL_CreateTextureFromSurface(R, surf);
     *w = surf->w; *h = surf->h; SDL_FreeSurface(surf);
@@ -104,7 +228,7 @@ static SDL_Texture *text_tex(FontFace f, int size, const char *s, SDL_Color c, i
 int D_textW(FontFace f, int size, const char *s) {
     s = T(s);
     TTF_Font *t = font(f, size); int w = 0, h = 0;
-    if (t && s && *s) TTF_SizeUTF8(t, s, &w, &h);
+    if (t && s && *s) { if (f != F_SUB && needs_packs(s)) return runs_width(f, size, s, t); TTF_SizeUTF8(t, s, &w, &h); }
     return w;
 }
 static int utf8_prev(const char *s, int i) { do i--; while (i > 0 && ((unsigned char)s[i] & 0xC0) == 0x80); return i; }
@@ -534,5 +658,8 @@ void D_quit(void) {
     nfonts = 0;
     TTF_Quit();
 }
-void D_frame(void) { clock_n++; }
+static void flush_text_cache(void) {
+    for (int i = 0; i < TEXT_N; i++) if (texts[i].tex) { SDL_DestroyTexture(texts[i].tex); texts[i].tex = NULL; free(texts[i].s); texts[i].s = NULL; }
+}
+void D_frame(void) { clock_n++; packs_check(); }
 SDL_Renderer *D_renderer(void) { return R; }

@@ -111,6 +111,7 @@ typedef struct {
     int page;              /* pages requested so far */
     bool replacing;        /* first page of a refresh: clear the old list on first result */
     bool tried, exhausted; int added;
+    bool fallback;         /* the account feed ran out: carry on with the app's own suggestions */
     char err[160];
 } Feed;
 
@@ -327,7 +328,6 @@ static void start_player(double start, bool keep_position) {
         src.audio_only = audio_only;
     } else {
         StreamInfo *s = &A.stream;
-        Preview_set(A.cur.id, s->sb);
         src.headers = s->headers; src.user_agent = s->user_agent;
         src.live = s->info.live;
         int vi = pick_video();
@@ -387,7 +387,6 @@ static void open_video(const VideoItem *v, const VideoList *from, int index) {
     if (A.resolveJob) { Yt_forget(A.resolveJob); A.resolveJob = 0; }
     A.cur = *v; A.hasCur = true; A.watchErr[0] = 0;
     A.abA = A.abB = -1; A.sponsorDone = 0; A.keyLock = false;
-    Preview_set(NULL, NULL);
     if (S.sponsor && !v->live) Sponsor_fetch(v->id);
     if (from && from != &A.queue) {
         VideoList_copy(&A.queue, from);
@@ -646,7 +645,18 @@ static void feed_queries(int tab, Feed *f) {
     }
     int id = chip_id(tab);
     /* signed in: YouTube's own home for you, your subscriptions, and what you watched anywhere */
-    if (Account_signedIn() && ((id == CH_FORYOU && S.home_mode == 0) || id == CH_SUBS || id == CH_CONT)) {
+    if (f->fallback && id == CH_SUBS) {
+        /* after "Đăng ký" from the account ran out: the newest uploads of those channels (by name), plus the ones followed here */
+        const VideoList *ch = Store_channels();
+        for (int i = 0; i < ch->count && f->nq < 3; i++) if (ch->items[i].channel_id[0]) snprintf(f->q[f->nq++], 128, "@ch:%s", ch->items[i].channel_id);
+        for (int i = 0; i < f->list.count && f->nq < MAXQ; i++) {
+            const char *c = f->list.items[i].channel; if (!c[0]) continue;
+            bool dup = false; for (int k = 0; k < f->nq; k++) if (!strcasecmp(f->q[k], c)) dup = true;
+            if (!dup) snprintf(f->q[f->nq++], 128, "%s", c);
+        }
+        if (f->nq) return;
+    }
+    if (Account_signedIn() && !f->fallback && ((id == CH_FORYOU && S.home_mode == 0) || id == CH_SUBS || id == CH_CONT)) {
         snprintf(f->q[f->nq++], 128, "@yt:%s", id == CH_SUBS ? "FEsubscriptions" : id == CH_CONT ? "FEhistory" : "FEwhat_to_watch"); return;
     }
     if (id == CH_CONT) { snprintf(f->q[f->nq++], 128, "@local:continue"); return; }
@@ -710,7 +720,7 @@ static void load_feed(int tab, bool force) {
     long long age = 0;
     if (!f->list.count) { Store_loadFeed(key, &f->list, &age); Kids_filter(&f->list); }
     if (force || !f->list.count || age > 1800 || !f->tried) {
-        f->tried = true; f->page = 0; f->exhausted = false; f->replacing = f->list.count > 0;
+        f->tried = true; f->page = 0; f->exhausted = false; f->fallback = false; f->replacing = f->list.count > 0;
         request_page(tab, tab == A.tab);
     }
 }
@@ -744,6 +754,12 @@ static void poll_jobs(void) {
         if (any && !feed_busy(f)) {
             if (f->page == 1 && f->list.count && !f->replacing) { char key[48]; feed_key(t, key, sizeof(key)); Store_saveFeed(key, &f->list); }
             if (f->page > 1 && f->added == 0 && !f->err[0]) f->exhausted = true;
+            /* "Dành cho bạn" / "Đăng ký" from the account came to an end: keep the list going (endless, like the app) */
+            if (!K.enabled && !f->fallback && f->nq == 1 && (!strcmp(f->q[0], "@yt:FEwhat_to_watch") || !strcmp(f->q[0], "@yt:FEsubscriptions")) &&
+                f->list.count && (f->exhausted || (f->err[0] && f->page > 1))) {
+                Log_msg("feed %s ended at %d videos: continuing with suggestions", f->q[0], f->list.count);
+                f->fallback = true; f->exhausted = false; f->err[0] = 0; f->page = 0;
+            }
             f->replacing = false;
         }
     }
@@ -2402,9 +2418,10 @@ static void draw_progress(int x, int y, int w, int h, PlayerStatus *st) {
             if (tx + pw > x + w) tx = x + w - pw;
             int c = chapter_at(seek_t);
             int ty = y - 18 - ph - (c >= 0 ? 26 : 0) - 30;
-            SDL_Texture *tex; SDL_Rect src;
-            bool have = Preview_frame(A.ren, seek_t, &tex, &src);
-            if (have || c >= 0) {
+            /* no picture (it costs downloads and heat): only the chapter you will land in */
+            SDL_Texture *tex = NULL; SDL_Rect src = {0};
+            bool have = false;
+            if (c >= 0) {
                 int boxh = (have ? ph : 0) + 30 + (c >= 0 ? 26 : 0);
                 int by = y - 18 - boxh;
                 D_round(tx - 4, by - 4, pw + 8, boxh + 8, 10, C_BLACK);
@@ -3380,6 +3397,7 @@ static void update(void) {
         }
     }
     { char dm[300]; if (Download_finishedMsg(dm, sizeof(dm))) toast("%s", dm); }
+    { int pk = D_takePackNote(); if (pk) { int mb = Subs_packMB(pk); if (mb) toast("Đang tải phông chữ %s (%d MB, một lần) để hiện tên video", T(Subs_packName(pk)), mb); else toast("Đang tải phông chữ %s (một lần) để hiện tên video", T(Subs_packName(pk))); } }
     newvideo_tick(now);
     sleep_tick(now);
     /* suggestions after the current video: top up the queue when it runs short */

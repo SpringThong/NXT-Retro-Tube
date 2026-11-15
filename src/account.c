@@ -527,7 +527,9 @@ static void walk(JSON_Value *v, const char *key, VideoList *out, char *tok, size
         /* continuation tokens: TV ("continuations":[{"nextContinuationData":…}]) and web (continuationItemRenderer) */
         JSON_Array *cs = json_object_get_array(o, "continuations");
         for (size_t i = 0; cs && i < json_array_get_count(cs); i++) {
-            const char *t = json_object_dotget_string(json_array_get_object(cs, i), "nextContinuationData.continuation");
+            JSON_Object *ce = json_array_get_object(cs, i);
+            const char *t = json_object_dotget_string(ce, "nextContinuationData.continuation");
+            if (!t) t = json_object_dotget_string(ce, "reloadContinuationData.continuation");
             int pr = list_key(key) ? 2 : 1;
             if (t && pr > *tprio) { snprintf(tok, tn, "%s", t); *tprio = pr; }
         }
@@ -543,7 +545,7 @@ static void walk(JSON_Value *v, const char *key, VideoList *out, char *tok, size
     JSON_Array *a = json_value_get_array(v);
     for (size_t i = 0; a && i < json_array_get_count(a); i++) walk(json_array_get_value(a, i), key, out, tok, tn, tprio, depth + 1);
 }
-typedef struct { char id[64]; VideoList items; char next[2048]; bool done; Uint32 used; } FeedCache;
+typedef struct { char id[64]; VideoList items; char next[2048]; bool done; Uint32 used; int dry; } FeedCache;
 static FeedCache fc[5];
 static pthread_mutex_t flock = PTHREAD_MUTEX_INITIALIZER;
 bool Account_feed(const char *browse, int start, int count, VideoList *out, char *err, size_t en) {
@@ -558,7 +560,9 @@ bool Account_feed(const char *browse, int start, int count, VideoList *out, char
     }
     c->used = SDL_GetTicks();
     bool ok = true;
-    for (int pages = 0; c->items.count < start + count && !c->done && pages < 5; pages++) {
+    /* YouTube's TV pages often repeat videos already shown (or are all Shorts): keep following the
+     * token through up to 4 such pages in a row before calling the feed finished */
+    for (int pages = 0; c->items.count < start + count && !c->done && pages < 10; pages++) {
         char extra[2300];
         if (c->next[0]) snprintf(extra, sizeof(extra), "\"continuation\":\"%s\"", c->next);
         else snprintf(extra, sizeof(extra), "\"browseId\":\"%s\"", browse);
@@ -568,11 +572,16 @@ bool Account_feed(const char *browse, int start, int count, VideoList *out, char
         char tok[2048] = "";
         walk(v, NULL, &c->items, tok, sizeof(tok), &prio, 0);
         json_value_free(v);
-        if (!tok[0] || !strcmp(tok, c->next) || c->items.count == before) { if (!tok[0] || c->items.count == before) c->done = true; }
+        bool same = tok[0] && !strcmp(tok, c->next);
+        c->dry = c->items.count == before ? c->dry + 1 : 0;
+        if (!tok[0] || same || c->dry >= 4) {
+            c->done = true;
+            Log_msg("account feed %s ends after %d videos: %s", browse, c->items.count, !tok[0] ? "no next-page token" : same ? "same token again" : "4 pages without new videos");
+        }
         snprintf(c->next, sizeof(c->next), "%s", tok);
     }
     for (int i = start; i < c->items.count && i < start + count; i++) VideoList_add(out, &c->items.items[i]);
-    if (ok && !out->count && !c->done) { snprintf(err, en, "empty"); ok = false; }
+    if (ok && !out->count && !c->done) { snprintf(err, en, "empty"); ok = false; c->done = true; }
     if (ok && !c->items.count) snprintf(err, en, "no videos");
     pthread_mutex_unlock(&flock);
     return ok && (out->count > 0 || c->done);
