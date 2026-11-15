@@ -19,6 +19,7 @@
 #define CHROME_UA "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
 static const char *base_url(void) { const char *b = getenv("NXT_TUBE_INNERTUBE_BASE"); return b ? b : "https://www.youtube.com"; }
 
+static __thread int http_timeout_s;   /* 0 = the usual 10 s; long polls set more */
 static char *http_req(const char *url, const char *body, const char *headers, const char *ua, bool verify, char *err, size_t en) {
     AVDictionary *o = NULL;
     char *hex = NULL;
@@ -36,8 +37,9 @@ static char *http_req(const char *url, const char *body, const char *headers, co
     av_dict_set(&o, "user_agent", ua, 0);
     av_dict_set(&o, "ca_file", paths.cacert, 0);
     av_dict_set(&o, "tls_verify", verify ? "1" : "0", 0);
-    av_dict_set(&o, "timeout", "10000000", 0);
-    av_dict_set(&o, "rw_timeout", "10000000", 0);
+    char tmo[24]; snprintf(tmo, sizeof(tmo), "%d", (http_timeout_s > 0 ? http_timeout_s : 10) * 1000000);
+    av_dict_set(&o, "timeout", tmo, 0);     /* socket I/O: long polls need more than 10 s */
+    av_dict_set(&o, "rw_timeout", tmo, 0);
     av_dict_set(&o, "icy", "0", 0);
     AVIOContext *io = NULL;
     int r = avio_open2(&io, url, AVIO_FLAG_READ, NULL, &o);
@@ -61,6 +63,12 @@ static char *http_any(const char *url, const char *body, const char *headers, co
 }
 
 char *Innertube_http(const char *url, const char *body, const char *headers, const char *ua, char *err, size_t en) { return http_any(url, body, headers, ua, err, en); }
+char *Innertube_httpLong(const char *url, const char *body, const char *headers, const char *ua, int timeout_s, char *err, size_t en) {
+    http_timeout_s = timeout_s;
+    char *r = http_req(url, body, headers, ua, true, err, en);
+    http_timeout_s = 0;
+    return r;
+}
 /* plain GET (subtitles): a browser user agent, the full CA bundle not needed for youtube.com */
 char *Innertube_get(const char *url, char *err, size_t en) {
     return http_any(url, NULL, "Origin: https://www.youtube.com\r\nReferer: https://www.youtube.com/\r\n", CHROME_UA, err, en);

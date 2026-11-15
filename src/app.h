@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define APP_NAME "NXT Retro Tube"
-#define APP_VERSION "2.4"
+#define APP_VERSION "2.4.1"
 /* scanout.c: direct panel output (Smart Pro S, when SDL cannot open the panel) */
 bool Scanout_open(int *lw, int *lh);
 SDL_Surface *Scanout_surface(void);
@@ -273,11 +273,18 @@ typedef struct { int lang, av_offset_ms, audio_out, home_mode, dac_volume; bool 
                  bool saver;                /* battery saver below 20 %: ≤480p, no prefetch */
                  bool autodl;               /* fetch new videos of followed channels while charging on Wi-Fi */
                  bool newbadge;             /* red dot on channels with new uploads */
+                 int eq;                    /* 2.4.1 EQ preset */
+                 bool acc_history;          /* 2.4.1 send watch history to the Google account */
+                 bool lounge;               /* 2.4.1 phone remote on */
                } Settings;
 extern Settings S;
 void Account_init(void);
 bool Account_signedIn(void);
 double Account_resumeSeconds(const char *id, double duration);
+void Account_watchStart(const char *id, double pos, double dur);    /* 2.4.1: history / continue watching on the account */
+void Account_watchTime(const char *id, double pos, double dur, bool paused);
+void Account_like(const char *id, bool on);
+void Account_subscribe(const char *channel_id, bool on);
 const char *Account_name(void);
 void Account_logout(void);
 void Account_startLogin(void);
@@ -305,6 +312,7 @@ bool Sys_powerAvailable(void);
 bool Sys_powerPressed(void);
 void Player_setGain(float g);
 void Player_setBoost(int level, bool voice);
+void Player_setEq(int preset);   /* 0 off, 1 bass, 2 vocals, 3 small speaker, 4 headphones, 5 rock/EDM */
 const char *Innertube_visitor(void);
 void Sys_setGovernor(bool performance);
 void Sys_cpuLevel(int level);
@@ -408,6 +416,8 @@ const char *Subs_packName(int pack);
 int Subs_packMB(int pack);
 const char *Subs_fontFor(const char *code, long *index);   /* NULL = app font */
 char *Innertube_get(const char *url, char *err, size_t en);
+char *Innertube_http(const char *url, const char *body, const char *headers, const char *ua, char *err, size_t en);
+char *Innertube_httpLong(const char *url, const char *body, const char *headers, const char *ua, int timeout_s, char *err, size_t en);
 /* extras.c (2.3.10) */
 typedef struct { double start, end; int cat; } SponsorSeg;
 void Sponsor_fetch(const char *id);
@@ -433,4 +443,17 @@ void PL_delete(int i);
 bool PL_has(int i, const char *id);
 bool PL_toggle(int i, const VideoItem *v);
 void PL_save(void);
+/* music.c (2.4.1): YouTube Music */
+bool Music_search(const char *q, int start, int count, VideoList *out, char *err, size_t en);
+bool Music_radio(const char *video_id, int start, int count, VideoList *out, char *err, size_t en);
+/* lounge.c (2.4.1): play from the YouTube app on a phone ("Link with TV code") */
+enum { LC_NONE, LC_PLAYLIST, LC_PLAY, LC_PAUSE, LC_SEEK, LC_NEXT, LC_PREV, LC_STOP, LC_VOLUME, LC_CONNECTED, LC_DISCONNECTED };
+typedef struct { int kind; char video[16]; char ids[2048]; int index; double time; int volume; char who[64]; } LoungeCmd;
+void Lounge_enable(bool on, const char *screen_name);
+bool Lounge_running(void);
+void Lounge_requestCode(void);
+int Lounge_code(char *out, size_t n, char *msg, size_t mn);   /* 0 none yet, 1 code ready, -1 failed */
+bool Lounge_take(LoungeCmd *c);
+void Lounge_report(const char *video_id, int state, double pos, double dur, int volume);   /* state: 1 playing, 2 paused, 3 loading, 0 ended, -1 idle */
+int Lounge_remotes(char *who, size_t n);
 #endif

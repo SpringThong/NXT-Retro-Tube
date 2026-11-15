@@ -16,7 +16,7 @@ static void path(char *out, size_t n) { snprintf(out, n, "%s/settings.json", pat
 void Settings_load(void) {
     memset(&S, 0, sizeof(S));
     S.autoplay = true; S.prefetch = true; S.telex = true; S.audio_out = 0; S.av_offset_ms = 0; S.dac_volume = 12;
-    S.sponsor = 1; S.newbadge = true; S.saver = true;
+    S.sponsor = 1; S.newbadge = true; S.saver = true; S.acc_history = true;
     S.sub_mode = 0; S.sub_size = 1; S.ota_auto = true;   /* subtitles: auto, medium, in the app's language */
     Settings_defaultKeys();
     char p[1200]; path(p, sizeof(p));
@@ -45,6 +45,9 @@ void Settings_load(void) {
         if (json_object_has_value(o, "voice")) S.voice = json_object_get_boolean(o, "voice") == 1;
         if (json_object_has_value(o, "saver")) S.saver = json_object_get_boolean(o, "saver") == 1;
         if (json_object_has_value(o, "autodl")) S.autodl = json_object_get_boolean(o, "autodl") == 1;
+        if (json_object_has_value(o, "lounge")) S.lounge = json_object_get_boolean(o, "lounge") == 1;
+        if (json_object_has_value(o, "eq")) S.eq = (int)json_object_get_number(o, "eq");
+        if (json_object_has_value(o, "acc_history")) S.acc_history = json_object_get_boolean(o, "acc_history") == 1;
         if (json_object_has_value(o, "newbadge")) S.newbadge = json_object_get_boolean(o, "newbadge") == 1;
         const char *st;
         if ((st = json_object_get_string(o, "app_title"))) snprintf(S.app_title, sizeof(S.app_title), "%s", st);
@@ -66,6 +69,7 @@ void Settings_load(void) {
     if (S.theme < 0 || S.theme > 5) S.theme = 0;
     if (S.sponsor < 0 || S.sponsor > 2) S.sponsor = 0;
     if (S.boost < 0 || S.boost > 3) S.boost = 0;
+    if (S.eq < 0 || S.eq > 5) S.eq = 0;
 }
 void Settings_save(void) {
     JSON_Value *root = json_value_init_object(); JSON_Object *o = json_value_get_object(root);
@@ -95,6 +99,9 @@ void Settings_save(void) {
     json_object_set_boolean(o, "saver", S.saver);
     json_object_set_boolean(o, "autodl", S.autodl);
     json_object_set_boolean(o, "newbadge", S.newbadge);
+    json_object_set_number(o, "eq", S.eq);
+    json_object_set_boolean(o, "lounge", S.lounge);
+    json_object_set_boolean(o, "acc_history", S.acc_history);
     { JSON_Value *cv = json_value_init_array(); for (int i = 0; i < 4; i++) json_array_append_string(json_value_get_array(cv), S.custom_chip[i]); json_object_set_value(o, "custom_chips", cv); }
     JSON_Value *k = json_value_init_array();
     for (int i = 0; i < KM_COUNT; i++) json_array_append_number(json_value_get_array(k), S.keymap[i]);

@@ -622,7 +622,7 @@ static Job *find(int id) {
 }
 /* fast lanes take resolves and searches (direct API); helper lanes take channel
  * lists and whatever the direct API could not answer */
-static bool account_job(const Job *j) { return j->kind == K_SEARCH && !strncmp(j->arg, "@yt:", 4); }
+static bool account_job(const Job *j) { return j->kind == K_SEARCH && (!strncmp(j->arg, "@yt:", 4) || !strncmp(j->arg, "@music:", 7) || !strncmp(j->arg, "@radio:", 7)); }
 static bool for_fast(const Job *j) { return account_job(j) || (!j->need_helper && j->kind != K_CHANNEL && j->kind != K_FETCH && native_ok()); }
 static Job *next_job(bool fast_lane) {
     Job *best = NULL;
@@ -831,9 +831,11 @@ static void *fast_work(void *arg) {
                 StreamInfo_free(&cache[cache_next]); copy_stream(&cache[cache_next], &stream); cache_next = (cache_next + 1) % CACHE_N;
                 pthread_mutex_unlock(&lock);
             }
-        } else if (!strncmp(copy.arg, "@yt:", 4)) {
-            /* a feed of the signed-in account: never handed to yt-dlp */
-            ok = Account_feed(copy.arg + 4, copy.start, copy.count, &list, why, sizeof(why));
+        } else if (!strncmp(copy.arg, "@yt:", 4) || !strncmp(copy.arg, "@music:", 7) || !strncmp(copy.arg, "@radio:", 7)) {
+            /* a feed of the signed-in account / YouTube Music: never handed to yt-dlp */
+            if (copy.arg[1] == 'y') ok = Account_feed(copy.arg + 4, copy.start, copy.count, &list, why, sizeof(why));
+            else if (copy.arg[1] == 'm') ok = Music_search(copy.arg + 7, copy.start, copy.count, &list, why, sizeof(why));
+            else ok = Music_radio(copy.arg + 7, copy.start, copy.count, &list, why, sizeof(why));
             Log_msg("account feed %s: %s in %.2fs, %d items", copy.arg + 4, ok ? "ok" : why, (SDL_GetTicks() - t0) / 1000.0, list.count);
             if (!ok) {
                 pthread_mutex_lock(&lock);

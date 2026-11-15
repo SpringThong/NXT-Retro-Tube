@@ -229,24 +229,47 @@ static int interrupt_cb(void *opaque) {
 }
 
 /* ---------- audio ---------- */
-/* volume boost (soft limiter, no harsh clipping) and "clear voice": a 2.8 kHz presence lift + 110 Hz high-pass */
-static struct { int boost; bool voice; float b[2][5]; float z[2][2][2]; } FX;
+/* volume boost (soft limiter, no harsh clipping), "clear voice" (2.8 kHz presence lift + 110 Hz high-pass)
+ * and EQ presets (2.4.1): one chain of up to 6 biquads, run only when something is on */
+static struct { int boost; bool voice; int eq; int nf; float b[6][5]; float z[6][2][2]; } FX;
 static void biquad_design(float *c, int type, double f0, double q, double gain_db) {
     double A = pow(10, gain_db / 40), w = 2 * M_PI * f0 / OUT_RATE, cw = cos(w), sw = sin(w), al = sw / (2 * q);
     double b0, b1, b2, a0, a1, a2;
-    if (type == 0) { b0 = 1 + al * A; b1 = -2 * cw; b2 = 1 - al * A; a0 = 1 + al / A; a1 = -2 * cw; a2 = 1 - al / A; }   /* peaking */
-    else { b0 = (1 + cw) / 2; b1 = -(1 + cw); b2 = (1 + cw) / 2; a0 = 1 + al; a1 = -2 * cw; a2 = 1 - al; }               /* high-pass */
+    if (type == 0) { b0 = 1 + al * A; b1 = -2 * cw; b2 = 1 - al * A; a0 = 1 + al / A; a1 = -2 * cw; a2 = 1 - al / A; }        /* peaking */
+    else if (type == 1) { b0 = (1 + cw) / 2; b1 = -(1 + cw); b2 = (1 + cw) / 2; a0 = 1 + al; a1 = -2 * cw; a2 = 1 - al; }   /* high-pass */
+    else { /* 2 low shelf, 3 high shelf (RBJ, S = 1) */
+        double sA = sqrt(A), al2 = sw / 2 * sqrt(2.0), k = 2 * sA * al2, s = type == 2 ? 1 : -1;
+        b0 = A * ((A + 1) - s * (A - 1) * cw + k); b1 = s * 2 * A * ((A - 1) - s * (A + 1) * cw); b2 = A * ((A + 1) - s * (A - 1) * cw - k);
+        a0 = (A + 1) + s * (A - 1) * cw + k; a1 = -s * 2 * ((A - 1) + s * (A + 1) * cw); a2 = (A + 1) + s * (A - 1) * cw - k;
+    }
     c[0] = b0 / a0; c[1] = b1 / a0; c[2] = b2 / a0; c[3] = a1 / a0; c[4] = a2 / a0;
+}
+static void fx_build(void) {
+    FX.nf = 0;
+    #define ADD(t, f, q, g) biquad_design(FX.b[FX.nf++], t, f, q, g)
+    if (FX.voice) { ADD(0, 2800, 0.9, 5.0); ADD(1, 110, 0.7, 0); }
+    switch (FX.eq) {
+        case 1: ADD(2, 110, 0.7, 6.0); ADD(0, 3000, 1.0, -1.0); break;                     /* Bass */
+        case 2: ADD(1, 90, 0.7, 0); ADD(0, 1800, 0.8, 3.5); ADD(3, 9000, 0.7, 2.0); break;  /* Giọng hát */
+        case 3: ADD(1, 160, 0.7, 0); ADD(0, 3200, 1.0, 3.0); ADD(3, 7000, 0.7, 2.5); break; /* Loa nhỏ */
+        case 4: ADD(2, 90, 0.7, 4.0); ADD(3, 8000, 0.7, 4.0); break;                         /* Tai nghe / sống động */
+        case 5: ADD(2, 120, 0.7, 2.5); ADD(0, 1000, 0.9, -2.0); ADD(3, 6000, 0.7, 3.0); break; /* Rock / EDM */
+    }
+    #undef ADD
+    memset(FX.z, 0, sizeof(FX.z));
 }
 void Player_setBoost(int level, bool voice) {
     pthread_mutex_lock(&P.lock);
-    FX.boost = level < 0 ? 0 : level > 3 ? 3 : level; FX.voice = voice;
-    biquad_design(FX.b[0], 0, 2800, 0.9, 5.0); biquad_design(FX.b[1], 1, 110, 0.7, 0);
-    memset(FX.z, 0, sizeof(FX.z));
+    FX.boost = level < 0 ? 0 : level > 3 ? 3 : level; FX.voice = voice; fx_build();
+    pthread_mutex_unlock(&P.lock);
+}
+void Player_setEq(int preset) {
+    pthread_mutex_lock(&P.lock);
+    FX.eq = preset < 0 || preset > 5 ? 0 : preset; fx_build();
     pthread_mutex_unlock(&P.lock);
 }
 static void fx_apply(float *out, int frames) {
-    if (FX.voice) for (int f = 0; f < 2; f++) {
+    for (int f = 0; f < FX.nf; f++) {
         float *c = FX.b[f];
         for (int ch = 0; ch < 2; ch++) {
             float z1 = FX.z[f][ch][0], z2 = FX.z[f][ch][1];
@@ -254,8 +277,8 @@ static void fx_apply(float *out, int frames) {
             FX.z[f][ch][0] = z1; FX.z[f][ch][1] = z2;
         }
     }
-    float g = FX.boost ? 1.0f + 0.5f * FX.boost : FX.voice ? 0.92f : 1.0f;
-    if (g == 1.0f) return;
+    /* EQ lifts and boost go through the soft limiter so nothing clips */
+    float g = FX.boost ? 1.0f + 0.5f * FX.boost : (FX.voice || FX.eq) ? 0.85f : 1.0f;
     for (int i = 0; i < frames * 2; i++) {
         float x = out[i] * g, a = fabsf(x);
         if (a > 0.6f) { float o = a - 0.6f; a = 0.6f + 0.4f * o / (o + 0.4f); x = x < 0 ? -a : a; }   /* knee at -4.4 dBFS, never above 1 */
@@ -282,7 +305,7 @@ static void audio_callback(void *u, Uint8 *stream, int len) {
             }
         }
         P.clock_ticks = SDL_GetTicks();
-        if (FX.boost || FX.voice) fx_apply(out, done);
+        if (FX.boost || FX.nf) fx_apply(out, done);
         { float g = P.gain * P.fade; if (g < 0.999f) for (int i = 0; i < done * 2; i++) out[i] *= g; }
         if (done < frames) {
             if (P.aq.eof && P.audio_eof_done && !P.rcount) P.ended = true;

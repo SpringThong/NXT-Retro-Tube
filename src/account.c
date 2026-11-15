@@ -586,3 +586,90 @@ bool Account_feed(const char *browse, int start, int count, VideoList *out, char
     pthread_mutex_unlock(&flock);
     return ok && (out->count > 0 || c->done);
 }
+
+/* ---------- 2.4.1: things you do here reach your Google account ----------
+ * like / subscribe through the TV app's own calls; watch history and "continue watching" by the
+ * same playback / watch-time pings the TV app sends (videostats URLs from its player answer). */
+static pthread_mutex_t wlock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t wwake = PTHREAD_COND_INITIALIZER;
+static bool w_running;
+static struct { int kind; char id[48]; double pos, dur; bool paused, on; } wq[16];
+static int wq_n;
+static char w_vid[16], w_cpn[20], w_play[2048], w_time[2048];
+static double w_last_et;
+enum { WJ_START = 1, WJ_TIME, WJ_LIKE, WJ_SUB };
+static void new_cpn(void) {
+    static const char *A64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    for (int i = 0; i < 16; i++) w_cpn[i] = A64[rand() % 64];
+    w_cpn[16] = 0;
+}
+static void ping(const char *base_url, const char *extra) {
+    if (!base_url[0]) return;
+    char err[200] = "", auth[2200], url[3000];
+    if (!bearer(auth, sizeof(auth), false, err, sizeof(err))) return;
+    snprintf(url, sizeof(url), "%s&ver=2&cpn=%s%s", base_url, w_cpn, extra);
+    char h[2600]; snprintf(h, sizeof(h), "%sOrigin: https://www.youtube.com\r\nReferer: https://www.youtube.com/tv\r\n", auth);
+    char *r = Innertube_http(url, NULL, h, TV_UA, err, sizeof(err));
+    if (!r && err[0] && !strstr(err, "204")) Log_msg("account ping: %s", err);
+    free(r);
+}
+static void do_job(int kind, const char *id, double pos, double dur, bool paused, bool on) {
+    char err[300] = "", extra[200];
+    if (kind == WJ_START) {
+        snprintf(extra, sizeof(extra), "\"videoId\":\"%s\",\"playbackContext\":{\"contentPlaybackContext\":{\"html5Preference\":\"HTML5_PREF_WANTS\"}}", id);
+        JSON_Value *v = tv_call("player", extra, err, sizeof(err));
+        JSON_Object *o = json_value_get_object(v);
+        const char *p = json_object_dotget_string(o, "playbackTracking.videostatsPlaybackUrl.baseUrl");
+        const char *t = json_object_dotget_string(o, "playbackTracking.videostatsWatchtimeUrl.baseUrl");
+        snprintf(w_vid, sizeof(w_vid), "%s", id); new_cpn(); w_last_et = 0;
+        snprintf(w_play, sizeof(w_play), "%s", p ? p : ""); snprintf(w_time, sizeof(w_time), "%s", t ? t : "");
+        json_value_free(v);
+        if (!w_play[0]) { Log_msg("account history %s: no tracking URLs (%s)", id, err[0] ? err : "player"); return; }
+        snprintf(extra, sizeof(extra), "&cmt=%.3f&len=%.3f", pos, dur);
+        ping(w_play, extra);
+        Log_msg("account history: %s marked watched", id);
+    } else if (kind == WJ_TIME) {
+        if (strcmp(id, w_vid) || !w_time[0]) return;
+        double st = w_last_et < pos ? w_last_et : pos;
+        snprintf(extra, sizeof(extra), "&cmt=%.3f&st=%.3f&et=%.3f&len=%.3f&state=%s&final=0", pos, st, pos, dur, paused ? "paused" : "playing");
+        ping(w_time, extra);
+        w_last_et = pos;
+    } else if (kind == WJ_LIKE) {
+        snprintf(extra, sizeof(extra), "\"target\":{\"videoId\":\"%s\"}", id);
+        JSON_Value *v = tv_call(on ? "like/like" : "like/removelike", extra, err, sizeof(err));
+        Log_msg("account like %s %s: %s", id, on ? "on" : "off", v ? "ok" : err);
+        json_value_free(v);
+    } else if (kind == WJ_SUB) {
+        snprintf(extra, sizeof(extra), "\"channelIds\":[\"%s\"],\"params\":\"EgIIAhgA\"", id);
+        JSON_Value *v = tv_call(on ? "subscription/subscribe" : "subscription/unsubscribe", extra, err, sizeof(err));
+        Log_msg("account %ssubscribe %s: %s", on ? "" : "un", id, v ? "ok" : err);
+        json_value_free(v);
+    }
+}
+static void *w_thread(void *u) {
+    (void)u;
+    pthread_mutex_lock(&wlock);
+    for (;;) {
+        while (!wq_n) pthread_cond_wait(&wwake, &wlock);
+        typeof(wq[0]) j = wq[0];
+        memmove(&wq[0], &wq[1], (wq_n - 1) * sizeof(wq[0])); wq_n--;
+        pthread_mutex_unlock(&wlock);
+        do_job(j.kind, j.id, j.pos, j.dur, j.paused, j.on);
+        pthread_mutex_lock(&wlock);
+    }
+    return NULL;
+}
+static void queue_job(int kind, const char *id, double pos, double dur, bool paused, bool on) {
+    if (!Account_signedIn() || !id || !*id) return;
+    pthread_mutex_lock(&wlock);
+    if (!w_running) { pthread_t t; w_running = pthread_create(&t, NULL, w_thread, NULL) == 0; if (w_running) pthread_detach(t); }
+    /* a newer watch-time ping replaces one still waiting */
+    if (kind == WJ_TIME) for (int i = 0; i < wq_n; i++) if (wq[i].kind == WJ_TIME) { memmove(&wq[i], &wq[i + 1], (wq_n - i - 1) * sizeof(wq[0])); wq_n--; break; }
+    if (wq_n < 16) { wq[wq_n].kind = kind; snprintf(wq[wq_n].id, sizeof(wq[0].id), "%s", id); wq[wq_n].pos = pos; wq[wq_n].dur = dur; wq[wq_n].paused = paused; wq[wq_n].on = on; wq_n++; }
+    pthread_cond_signal(&wwake);
+    pthread_mutex_unlock(&wlock);
+}
+void Account_watchStart(const char *id, double pos, double dur) { queue_job(WJ_START, id, pos, dur, false, true); }
+void Account_watchTime(const char *id, double pos, double dur, bool paused) { queue_job(WJ_TIME, id, pos, dur, paused, true); }
+void Account_like(const char *id, bool on) { queue_job(WJ_LIKE, id, 0, 0, false, on); }
+void Account_subscribe(const char *channel_id, bool on) { queue_job(WJ_SUB, channel_id, 0, 0, false, on); }

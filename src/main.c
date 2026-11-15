@@ -115,8 +115,8 @@ typedef struct {
     char err[160];
 } Feed;
 
-enum { SET_LANG, SET_THEME, SET_QUALITY, SET_AUTOPLAY, SET_PREFETCH, SET_SAVER, SET_SUBS, SET_SUBLANG, SET_SUBSIZE, SET_SPONSOR, SET_BOOST, SET_VOICE, SET_TELEX, SET_AVSYNC, SET_AUDIO, SET_BOTTOM, SET_FPS60, SET_SLEEP_ACT, SET_OTA_AUTO, SET_NEWBADGE, SET_AUTODL, SET_HOME,
-       SET_CUSTOM, SET_ACCOUNT, SET_IMPORT, SET_EXPORT, SET_KEYS, SET_KIDS, SET_UPDATE,
+enum { SET_LANG, SET_THEME, SET_QUALITY, SET_AUTOPLAY, SET_PREFETCH, SET_SAVER, SET_SUBS, SET_SUBLANG, SET_SUBSIZE, SET_SPONSOR, SET_BOOST, SET_VOICE, SET_EQ, SET_ACCHIST, SET_TELEX, SET_AVSYNC, SET_AUDIO, SET_BOTTOM, SET_FPS60, SET_SLEEP_ACT, SET_OTA_AUTO, SET_NEWBADGE, SET_AUTODL, SET_HOME,
+       SET_CUSTOM, SET_ACCOUNT, SET_LOUNGE, SET_IMPORT, SET_EXPORT, SET_KEYS, SET_KIDS, SET_UPDATE,
        SET_CACHE, SET_HISTORY, SET_SEARCHES, SET_VERSION, SET_ABOUT, SET_ICON, SET_COUNT };
 #ifdef NXT_TUBE_ROM_NXREDUX
 #define SET_ROWS SET_COUNT          /* Tools-menu icon: NX Redux launcher only */
@@ -128,9 +128,9 @@ enum { G_ACCOUNT, G_PLAY, G_AUDIO, G_SUBS, G_UI, G_STORAGE, G_SYSTEM, G_KIDS, G_
 static const char *GROUP_LABEL[G_N] = {"Tài khoản & kênh", "Phát video", "Âm thanh", "Phụ đề", "Giao diện", "Tải về & bộ nhớ", "Pin, phím & hệ thống", "Chế độ trẻ em", "Cập nhật & giới thiệu"};
 static const char *GROUP_ICON[G_N] = {"users", "play", "headphones", "captions", "sliders-horizontal", "download", "gauge", "house", "thumbs-up"};
 static const int GROUP_ROWS[G_N][8] = {
-    {SET_ACCOUNT, SET_IMPORT, SET_NEWBADGE, SET_AUTODL, -1},
+    {SET_ACCOUNT, SET_ACCHIST, SET_LOUNGE, SET_IMPORT, SET_NEWBADGE, SET_AUTODL, -1},
     {SET_QUALITY, SET_AUTOPLAY, SET_PREFETCH, SET_FPS60, SET_SPONSOR, SET_SLEEP_ACT, -1},
-    {SET_AUDIO, SET_BOTTOM, SET_BOOST, SET_VOICE, SET_AVSYNC, -1},
+    {SET_AUDIO, SET_BOTTOM, SET_EQ, SET_BOOST, SET_VOICE, SET_AVSYNC, -1},
     {SET_SUBS, SET_SUBLANG, SET_SUBSIZE, -1},
     {SET_LANG, SET_THEME, SET_CUSTOM, SET_HOME, SET_TELEX, -1},
     {SET_EXPORT, SET_CACHE, SET_HISTORY, SET_SEARCHES, -1},
@@ -185,7 +185,12 @@ static struct {
     unsigned sponsorDone; Uint32 sponsorToastAt;
     int panelFirst;             /* first visible row of a long panel */
     int fDate, fDur, fSort; bool fLive;   /* search filters */
-    int ncJob, ncIdx; Uint32 ncNext; int ncNew; int autodlToday, autodlDay;
+    int ncJob, ncIdx;
+    /* 2.4.1 */
+    bool loungePanel; char loungeCode[32], loungeMsg[200]; int loungeState; double loungeSeek; Uint32 loungeReportAt; int loungeLastState;
+    char accWatchId[16]; Uint32 accPingAt; bool accStarted; int accLastState;
+    bool liked; char likedId[16];
+    int radioJob; bool radioThenNext; bool fMusic; Uint32 ncNext; int ncNew; int autodlToday, autodlDay;
     /* overlays */
     bool osd; Uint32 osdUntil; Panel panel; int panelSel; bool stats;
     char toast[200]; Uint32 toastUntil; char flash[48]; Uint32 flashUntil;
@@ -390,6 +395,7 @@ static void start_player(double start, bool keep_position) {
 }
 /* where to start: your own spot on this handheld, else where your Google account stopped (phone, web, TV) */
 static double resume_at(const VideoItem *v) {
+    if (A.loungeSeek > 0) { double t = A.loungeSeek; A.loungeSeek = 0; return t; }   /* the phone said where */
     double p = Store_resumePosition(v->id);
     if (p > 0 || v->live) return p;
     int dur = v->duration;
@@ -429,6 +435,34 @@ static void play_index(int i) {
     if (i < 0 || i >= A.queue.count) return;
     VideoItem v = A.queue.items[i];
     open_video(&v, &A.queue, i);
+}
+/* YouTube Music "radio" from the song playing: more songs added after it (then_next: play on) */
+static void start_radio(bool then_next) {
+    if (!A.hasCur || A.cur.live || A.radioJob) return;
+    char q[40]; snprintf(q, sizeof(q), "@radio:%s", A.cur.id);
+    A.radioJob = Yt_searchPage(q, 0, 40, false, true); A.radioThenNext = then_next;
+    if (!then_next) toast("Đang tạo Mix nhạc từ bài này…");
+}
+static void radio_poll(void) {
+    if (!A.radioJob) return;
+    JobState js = Yt_state(A.radioJob);
+    if (js != JOB_DONE && js != JOB_FAILED) return;
+    VideoList l = {0}; int added = 0;
+    if (js == JOB_DONE && Yt_takeList(A.radioJob, &l)) {
+        /* keep what is before (and the song itself), then the mix */
+        VideoList q = {0};
+        for (int i = 0; i <= A.qpos && i < A.queue.count; i++) VideoList_add(&q, &A.queue.items[i]);
+        if (A.qpos < 0 || A.qpos >= A.queue.count) { VideoList_add(&q, &A.cur); A.qpos = 0; }
+        for (int i = 0; i < l.count; i++) {
+            bool dup = false; for (int k = 0; k < q.count; k++) if (!strcmp(q.items[k].id, l.items[i].id)) dup = true;
+            if (!dup) { VideoList_add(&q, &l.items[i]); added++; }
+        }
+        VideoList_clear(&A.queue); A.queue = q; A.moreDone = true;
+    }
+    VideoList_clear(&l); Yt_forget(A.radioJob); A.radioJob = 0;
+    if (!added) { if (!A.radioThenNext) toast("Không tạo được Mix cho bài này"); return; }
+    if (A.radioThenNext) play_index(A.qpos + 1);
+    else toast("Mix nhạc: thêm %d bài phát tiếp sau bài này", added);
 }
 
 /* ---------- display lifecycle ---------- */
@@ -925,6 +959,50 @@ static void more_results(void) {
     if (A.channelView) A.searchJob = Yt_channelPage(A.channelId, A.found.count, 20);
     else A.searchJob = Yt_searchPage(search_q(A.lastQuery), A.found.count, 20, false, true);
 }
+/* ---------- phone remote (YouTube app "Link with TV code") ---------- */
+static void screen_wake(void);
+static void lounge_tick(Uint32 now, const PlayerStatus *st) {
+    if (!S.lounge) return;
+    LoungeCmd c;
+    while (Lounge_take(&c)) {
+        switch (c.kind) {
+            case LC_PLAYLIST: {
+                VideoList q = {0}; int idx = 0, n = 0;
+                char ids[2048]; snprintf(ids, sizeof(ids), "%s", c.ids[0] ? c.ids : c.video);
+                for (char *save = NULL, *t = strtok_r(ids, ",", &save); t && n < 200; t = strtok_r(NULL, ",", &save), n++) {
+                    VideoItem v; memset(&v, 0, sizeof(v)); snprintf(v.id, sizeof(v.id), "%s", t);
+                    snprintf(v.title, sizeof(v.title), "%s", T("Video từ điện thoại"));
+                    if (!strcmp(t, c.video)) idx = q.count;
+                    VideoList_add(&q, &v);
+                }
+                if (!q.count) break;
+                if (A.hasCur && !strcmp(A.cur.id, c.video)) { if (c.time > 0) Player_seek(c.time); VideoList_clear(&q); break; }
+                A.loungeSeek = c.time > 1 ? c.time : 0;
+                if (A.screenOff) screen_wake();
+                if (A.hidden) A.hidden = false;
+                VideoList_clear(&A.queue); A.queue = q; A.moreDone = true;
+                play_index(idx);
+                A.screen = SC_WATCH;
+                break; }
+            case LC_PLAY: if (st->state == PS_PAUSED) Player_togglePause(); break;
+            case LC_PAUSE: if (st->state == PS_PLAYING) Player_togglePause(); break;
+            case LC_SEEK: if (A.hasCur && !st->live) Player_seek(c.time); break;
+            case LC_NEXT: play_index(A.qpos + 1); break;
+            case LC_PREV: play_index(A.qpos - 1); break;
+            case LC_STOP: if (st->state == PS_PLAYING) Player_togglePause(); break;
+            case LC_CONNECTED: toast("Điện thoại %s đã kết nối · chọn video trên điện thoại để phát", c.who); break;
+            case LC_DISCONNECTED: toast("Điện thoại đã ngắt kết nối"); break;
+        }
+    }
+    /* tell the phone what plays: on a change, and every 5 s while playing */
+    if (A.hasCur) {
+        int ls = st->state == PS_PLAYING ? 1 : st->state == PS_PAUSED ? 2 : st->state == PS_ENDED ? 0 : 3;
+        if (ls != A.loungeLastState || (ls == 1 && (Sint32)(now - A.loungeReportAt) >= 0)) {
+            Lounge_report(A.cur.id, ls, st->position, st->duration, 100);
+            A.loungeLastState = ls; A.loungeReportAt = now + 5000;
+        }
+    }
+}
 /* ---------- new uploads of followed channels (badge + optional download while charging) ---------- */
 #define NC_MAX 500
 static struct { char cid[40], latest[16], seen[16]; int fresh; } nc[NC_MAX];
@@ -1042,14 +1120,17 @@ static void open_panel(Panel p) {
 static int chapter_at(double pos) { int c = -1; for (int i = 0; i < A.stream.nchap; i++) if (A.stream.chap[i].t <= pos + 0.3) c = i; return c; }
 /* Tùy chọn video (SELECT): ids keep their old numbers (0-8), 2.3.10 adds 9-16 */
 enum { OPT_QUALITY, OPT_SPEED, OPT_BG, OPT_LATER, OPT_FOLLOW, OPT_DOWNLOAD, OPT_STATS, OPT_SUBS, OPT_SLEEP,
-       OPT_REPEAT, OPT_AB, OPT_CHAPTERS, OPT_BOOST, OPT_LOCK, OPT_MUSIC, OPT_PLAYLIST, OPT_SKIP };
+       OPT_REPEAT, OPT_AB, OPT_CHAPTERS, OPT_BOOST, OPT_LOCK, OPT_MUSIC, OPT_PLAYLIST, OPT_SKIP, OPT_LIKE, OPT_SCREENOFF, OPT_RADIO };
 static int opt_list(int *ids) {
     int n = 0;
     ids[n++] = OPT_QUALITY; ids[n++] = OPT_SPEED; ids[n++] = OPT_SUBS;
     if (A.stream.nchap && !A.cur.live) ids[n++] = OPT_CHAPTERS;
-    ids[n++] = OPT_MUSIC; ids[n++] = OPT_REPEAT;
+    ids[n++] = OPT_MUSIC; ids[n++] = OPT_SCREENOFF;
+    if (!A.cur.live) ids[n++] = OPT_RADIO;
+    ids[n++] = OPT_REPEAT;
     if (!A.cur.live) ids[n++] = OPT_AB;
     ids[n++] = OPT_BOOST; ids[n++] = OPT_SLEEP; ids[n++] = OPT_LOCK;
+    if (Account_signedIn()) ids[n++] = OPT_LIKE;
     ids[n++] = OPT_PLAYLIST; ids[n++] = OPT_DOWNLOAD; ids[n++] = OPT_LATER; ids[n++] = OPT_FOLLOW;
     ids[n++] = OPT_BG; ids[n++] = OPT_STATS;
     return n;
@@ -1069,13 +1150,14 @@ static int panel_rows(void) {
         case PANEL_DOWNLOAD: return DL_KINDS;
         case PANEL_PLAYLIST: return PL_count() + (PL_count() < 8 ? 1 : 0);
         case PANEL_CHAPTERS: return A.stream.nchap;
-        case PANEL_FILTER: return 5;
+        case PANEL_FILTER: return 6;
         default: return options_count();
     }
 }
 /* search filters as YouTube's "params" (protobuf: 1 sort, 2 {1 date, 2 type, 3 length, 8 live}) */
 static const char *search_q(const char *q) {
     static char out[400];
+    if (A.fMusic) { snprintf(out, sizeof(out), "@music:%s", q); return out; }   /* songs: other filters do not apply */
     if (!A.fDate && !A.fDur && !A.fSort && !A.fLive) return q;
     unsigned char b[16]; int n = 0, f = 0; unsigned char fl[12];
     if (A.fSort) { b[n++] = 0x08; b[n++] = (unsigned char)(A.fSort == 1 ? 2 : A.fSort == 2 ? 3 : 1); }
@@ -1108,6 +1190,7 @@ static void subs_restart(void) {
 }
 static void open_panel(Panel p);
 static void play_index(int i);
+static void screen_off(void);
 static void run_option(int i) {
     PlayerStatus ps; Player_status(&ps);
     switch (opt_id(i)) {
@@ -1130,6 +1213,12 @@ static void run_option(int i) {
             A.panel = PANEL_NONE; return;
         }
         case OPT_PLAYLIST: open_panel(PANEL_PLAYLIST); return;
+        case OPT_LIKE: {
+            bool on = !(A.liked && !strcmp(A.likedId, A.cur.id));
+            A.liked = on; snprintf(A.likedId, sizeof(A.likedId), "%s", A.cur.id);
+            Account_like(A.cur.id, on); toast(on ? "Đã thích · lưu vào tài khoản Google" : "Đã bỏ thích"); A.panel = PANEL_NONE; return; }
+        case OPT_SCREENOFF: A.panel = PANEL_NONE; screen_off(); return;
+        case OPT_RADIO: start_radio(false); A.panel = PANEL_NONE; return;
         case OPT_DOWNLOAD:
             if (A.cur.live) { toast("Không tải được video trực tiếp"); A.panel = PANEL_NONE; return; }
             if (Download_busy()) { toast("Đang tải video khác, chờ xong nhé"); A.panel = PANEL_NONE; return; }
@@ -1141,7 +1230,10 @@ static void run_option(int i) {
         case 2: A.panel = PANEL_NONE; go_background(); break;
         case 3: toast(Store_toggleLater(&A.cur) ? "Đã thêm vào Xem sau" : "Đã bỏ khỏi Xem sau"); Store_save(); A.panel = PANEL_NONE; break;
         case 4: if (!A.cur.channel_id[0]) { toast("Không rõ kênh của video này"); break; }
-            toast(Store_toggleChannel(&A.cur) ? "Đã theo dõi %s" : "Đã bỏ theo dõi %s", A.cur.channel); Store_save(); A.panel = PANEL_NONE; break;
+            { bool on = Store_toggleChannel(&A.cur);
+              if (Account_signedIn()) { Account_subscribe(A.cur.channel_id, on); toast(on ? "Đã đăng ký %s (cả tài khoản Google)" : "Đã hủy đăng ký %s (cả tài khoản Google)", A.cur.channel); }
+              else toast(on ? "Đã theo dõi %s" : "Đã bỏ theo dõi %s", A.cur.channel); }
+            Store_save(); A.panel = PANEL_NONE; break;
 
         case 6: A.stats = !A.stats; A.panel = PANEL_NONE; break;
     }
@@ -1151,15 +1243,16 @@ static void panel_key(Key k) {
     int count = panel_rows(); if (count < 1) { A.panel = PANEL_NONE; return; }
     if (A.panelSel >= count) A.panelSel = count - 1;
     if (A.panel == PANEL_FILTER) {
-        int d = k == K_LEFT ? -1 : k == K_RIGHT ? 1 : k == K_A && A.panelSel < 4 ? 1 : 0;
-        if (k == K_UP) A.panelSel = (A.panelSel + 4) % 5;
-        else if (k == K_DOWN) A.panelSel = (A.panelSel + 1) % 5;
+        int d = k == K_LEFT ? -1 : k == K_RIGHT ? 1 : k == K_A && A.panelSel < 5 ? 1 : 0;
+        if (k == K_UP) A.panelSel = (A.panelSel + 5) % 6;
+        else if (k == K_DOWN) A.panelSel = (A.panelSel + 1) % 6;
+        else if (d && A.panelSel == 4) A.fMusic = !A.fMusic;
         else if (d && A.panelSel == 0) A.fDate = (A.fDate + 6 + d) % 6;
         else if (d && A.panelSel == 1) A.fDur = (A.fDur + 4 + d) % 4;
         else if (d && A.panelSel == 2) A.fSort = (A.fSort + 4 + d) % 4;
         else if (d && A.panelSel == 3) A.fLive = !A.fLive;
-        else if ((k == K_A && A.panelSel == 4) || k == K_START) { A.panel = PANEL_NONE; if (A.lastQuery[0]) run_search(A.lastQuery); }
-        else if (k == K_X) { A.fDate = A.fDur = A.fSort = 0; A.fLive = false; }
+        else if ((k == K_A && A.panelSel == 5) || k == K_START) { A.panel = PANEL_NONE; if (A.lastQuery[0]) run_search(A.lastQuery); }
+        else if (k == K_X) { A.fDate = A.fDur = A.fSort = 0; A.fLive = false; A.fMusic = false; }
         else if (k == K_B || k == K_SELECT) A.panel = PANEL_NONE;
         return;
     }
@@ -1302,6 +1395,8 @@ static void setting_change(int row, int dir) {
         case SET_BOOST: S.boost = (S.boost + 4 + dir) % 4; Player_setBoost(S.boost, S.voice); break;
         case SET_VOICE: S.voice = !S.voice; Player_setBoost(S.boost, S.voice); break;
         case SET_NEWBADGE: S.newbadge = !S.newbadge; break;
+        case SET_EQ: S.eq = (S.eq + 6 + dir) % 6; Player_setEq(S.eq); break;
+        case SET_ACCHIST: S.acc_history = !S.acc_history; break;
         case SET_AUTODL: S.autodl = !S.autodl; break;
         case SET_HOME: S.home_mode = 1 - S.home_mode; { Feed *f = &A.feed[0]; for (int i = 0; i < f->njobs; i++) if (f->jobs[i]) Yt_forget(f->jobs[i]); VideoList_clear(&f->list); memset(f, 0, sizeof(*f)); } break;
         default: return;
@@ -1313,6 +1408,7 @@ static void setting_action(int row) {
     switch (row) {
         case SET_KEYS: A.keyPage = true; A.keySelRow = 0; A.capture = -1; return;
         case SET_CUSTOM: A.custPage = true; A.custSel = 0; A.custScroll = 0; return;
+        case SET_LOUNGE: S.lounge = true; Settings_save(); Lounge_requestCode(); A.loungePanel = true; A.loungeState = 0; return;
         case SET_IMPORT: import_takeout(); return;
         case SET_EXPORT: { char m[300]; export_all(m, sizeof(m)); toast("%s", m); return; }
         case SET_ACCOUNT:
@@ -1555,6 +1651,12 @@ static void handle_key(Key k) {
         Uint32 t = SDL_GetTicks();
         if (k == K_SELECT) { if (t - A.lockTapAt > 1500) A.lockTaps = 0; A.lockTapAt = t; if (++A.lockTaps >= 3) { A.keyLock = false; toast("Đã mở khóa phím"); return; } }
         flash(T("Đã khóa phím · SELECT ×3"));
+        return;
+    }
+    if (A.loungePanel) {                                /* phone pairing: B closes, A new code, X turns it off */
+        if (k == K_B) A.loungePanel = false;
+        else if (k == K_A) { Lounge_requestCode(); A.loungeState = 0; }
+        else if (k == K_X) { S.lounge = false; Settings_save(); Lounge_enable(false, NULL); A.loungePanel = false; toast("Đã tắt điều khiển bằng điện thoại"); }
         return;
     }
     if (A.loginPanel) {                                 /* Google sign-in: B closes, A retries after an error */
@@ -2134,6 +2236,7 @@ static void draw_search(void) {
             if (A.fDur) snprintf(fl + strlen(fl), sizeof(fl) - strlen(fl), "%s · ", T(FDUR[A.fDur]));
             if (A.fSort) snprintf(fl + strlen(fl), sizeof(fl) - strlen(fl), "%s · ", T(FSORT[A.fSort]));
             if (A.fLive) snprintf(fl + strlen(fl), sizeof(fl) - strlen(fl), "%s · ", T("Trực tiếp"));
+            if (A.fMusic) snprintf(fl, sizeof(fl), "%s · ", T("YouTube Music"));
             if (fl[0]) { fl[strlen(fl) - 4] = 0; int fw = D_textW(F_BOLD, 15, fl) + 20; D_round(24 + tw + 14, 104, fw, 26, 13, C_MUSTARD); D_text(F_BOLD, 15, fl, 24 + tw + 14 + fw / 2, 108, C_DARK, 0, AL_CENTER); }
         }
         if (A.searchJob && !A.found.count) { D_spinner(SCREEN_W / 2, 380, 30, C_MUSTARD); D_text(F_BOLD, 22, "Đang tìm trên YouTube…", SCREEN_W / 2, 430, C_INK, 0, AL_CENTER); }
@@ -2244,6 +2347,15 @@ static void setting_text(int row, char *label, size_t ln, char *value, size_t vn
             snprintf(note, nn, "%s", T("Chấm đỏ ở tab Kênh và trên kênh có video mới từ lần xem trước · kiểm tra mỗi 2 giờ khi có Wi-Fi")); break;
         case SET_AUTODL: snprintf(label, ln, "%s", T("Tự tải video mới khi sạc")); snprintf(value, vn, "%s", T(onoff[S.autodl]));
             snprintf(note, nn, "%s", T("Đang cắm sạc + có Wi-Fi: tự tải 1 video mới nhất của mỗi kênh theo dõi (tối đa 5 video/ngày, 480p) để xem không cần mạng")); break;
+        case SET_EQ: { static const char *m[6] = {"Tắt", "Trầm mạnh (Bass)", "Giọng hát", "Loa nhỏ của máy", "Tai nghe · sống động", "Rock / EDM"};
+            snprintf(label, ln, "%s", T("Bộ chỉnh âm (EQ)")); snprintf(value, vn, "%s", T(m[S.eq]));
+            snprintf(note, nn, "%s", T("Kiểu âm có sẵn cho loa, tai nghe, DAC · có chống vỡ tiếng · nhẹ máy")); break; }
+        case SET_ACCHIST: snprintf(label, ln, "%s", T("Gửi lịch sử xem về tài khoản")); snprintf(value, vn, "%s", T(onoff[S.acc_history]));
+            snprintf(note, nn, "%s", T("Đã đăng nhập: video xem trên máy hiện trong lịch sử YouTube và mục Xem tiếp trên điện thoại / web")); break;
+        case SET_LOUNGE: { char who[64]; int nr = Lounge_remotes(who, sizeof(who));
+            snprintf(label, ln, "%s", T("Điều khiển bằng điện thoại"));
+            snprintf(value, vn, "%s", !S.lounge ? T("Tắt") : nr ? T("Đã kết nối") : T("Đang chờ"));
+            snprintf(note, nn, "%s", T("Ghép với app YouTube trên điện thoại như một chiếc TV: chọn video trên điện thoại là máy phát, điện thoại làm điều khiển · A lấy mã ghép nối")); break; }
         case SET_CUSTOM: snprintf(label, ln, "%s", T("Tùy biến giao diện")); snprintf(value, vn, "%s", "A");
             snprintf(note, nn, "%s", T("Màu, sắp xếp / ẩn / thêm tab trang chủ, ẩn biểu tượng thanh trạng thái")); break;
         case SET_IMPORT: snprintf(label, ln, "%s", T("Nhập kênh từ Google Takeout")); snprintf(value, vn, "%s", "A");
@@ -2648,9 +2760,10 @@ static void draw_panel(void) {
             current = chapter_at(pst.position) == i;
         }
         else if (A.panel == PANEL_FILTER) {
-            static const char *L[5] = {"Thời gian tải lên", "Thời lượng", "Sắp xếp", "Chỉ video trực tiếp", "Áp dụng"};
+            static const char *L[6] = {"Thời gian tải lên", "Thời lượng", "Sắp xếp", "Chỉ video trực tiếp", "Tìm trong", "Áp dụng"};
             snprintf(label, sizeof(label), "%s", T(L[i]));
-            snprintf(note, sizeof(note), "%s", i == 0 ? T(FDATE[A.fDate]) : i == 1 ? T(FDUR[A.fDur]) : i == 2 ? T(FSORT[A.fSort]) : i == 3 ? T(A.fLive ? "Bật" : "Tắt") : T("Tìm lại với bộ lọc này"));
+            snprintf(note, sizeof(note), "%s", i == 0 ? T(FDATE[A.fDate]) : i == 1 ? T(FDUR[A.fDur]) : i == 2 ? T(FSORT[A.fSort]) : i == 3 ? T(A.fLive ? "Bật" : "Tắt") :
+                     i == 4 ? T(A.fMusic ? "Bài hát (YouTube Music)" : "Video YouTube") : T("Tìm lại với bộ lọc này"));
         }
         else if (A.panel == PANEL_SPEED) { snprintf(label, sizeof(label), "%s", SPEED_LABEL[i]); snprintf(note, sizeof(note), "%s", i == 2 ? T("Bình thường") : i == 0 ? T("Chậm") : i == 5 ? T("Nhanh") : ""); }
         else {
@@ -2676,6 +2789,10 @@ static void draw_panel(void) {
                 case OPT_LOCK: snprintf(label, sizeof(label), "%s", T("Khóa phím")); snprintf(note, sizeof(note), "%s", T("Bỏ túi không lo bấm nhầm · SELECT ×3 để mở")); break;
                 case OPT_MUSIC: { bool on = !strcmp(QUALITY_ID[A.quality], "audio");
                     snprintf(label, sizeof(label), "%s", on ? T("Bật lại hình") : T("Chế độ nghe nhạc")); snprintf(note, sizeof(note), "%s", on ? T("Quay về chất lượng trước đó") : T("Tắt hình, màn hình nhạc · mát máy, pin lâu")); break; }
+                case OPT_LIKE: { bool on = A.liked && !strcmp(A.likedId, A.cur.id);
+                    snprintf(label, sizeof(label), "%s", on ? T("Bỏ thích") : T("Thích video này")); snprintf(note, sizeof(note), "%s", T("Lưu vào tài khoản Google · danh sách Video đã thích")); break; }
+                case OPT_SCREENOFF: snprintf(label, sizeof(label), "%s", T("Tắt màn hình, nghe tiếp")); snprintf(note, sizeof(note), "%s", T("Tiếng vẫn chạy, đỡ tốn pin · bấm phím bất kỳ để bật lại")); break;
+                case OPT_RADIO: snprintf(label, sizeof(label), "%s", T("Mix nhạc từ bài này")); snprintf(note, sizeof(note), "%s", T("YouTube Music chọn tiếp các bài hợp gu · phát liên tục")); break;
                 case OPT_PLAYLIST: snprintf(label, sizeof(label), "%s", T("Thêm vào danh sách phát")); snprintf(note, sizeof(note), "%s", T("Yêu thích và danh sách của bạn · Thư viện")); break;
                 default: snprintf(label, sizeof(label), "%s", A.stats ? T("Ẩn thông tin luồng") : T("Hiện thông tin luồng")); snprintf(note, sizeof(note), "%s", T("Bộ đệm, khung hình, lệch tiếng–hình")); break;
             }
@@ -3210,6 +3327,32 @@ static void draw_sleep(void) {
 }
 #include "qrcodegen.h"
 /* Google sign-in: the code to type on google.com/device, and a QR code that opens it already filled in */
+static void draw_lounge(void) {
+    if (!A.loungePanel) return;
+    A.loungeState = Lounge_code(A.loungeCode, sizeof(A.loungeCode), A.loungeMsg, sizeof(A.loungeMsg));
+    D_rect(0, 0, SCREEN_W, SCREEN_H, RGBA(8, 7, 12, 200));
+    int w = 820, h = 470, x = (SCREEN_W - w) / 2, y = 130;
+    D_round(x + 10, y + 10, w, h, 18, C_BLACK); D_round(x, y, w, h, 18, C_SURFACE); D_roundRing(x, y, w, h, 18, 3, C_BLACK);
+    D_icon("play", x + 30, y + 28, 32, C_MUSTARD);
+    D_text(F_XBOLD, 28, "Điều khiển bằng điện thoại", x + 74, y + 26, C_INK, 0, AL_LEFT);
+    if (A.loungeState == 1) {
+        D_text(F_SEMI, 18, "Mã ghép nối TV", x + w / 2, y + 92, C_MUTED, 0, AL_CENTER);
+        D_round(x + 110, y + 122, w - 220, 92, 14, C_BG);
+        D_text(F_PIXEL, 76, A.loungeCode, x + w / 2, y + 128, C_MUSTARD, 0, AL_CENTER);
+    } else if (A.loungeState < 0) {
+        D_textBox(F_SEMI, 20, A.loungeMsg, x + 40, y + 110, w - 80, 3, 28, C_TOMATO);
+    } else D_text(F_SEMI, 22, "Đang lấy mã…", x + w / 2, y + 150, C_MUTED, 0, AL_CENTER);
+    D_textBox(F_REG, 18, "Trên điện thoại: mở app YouTube › ảnh đại diện › Cài đặt › Xem trên TV › Liên kết bằng mã TV › nhập mã này. "
+              "Sau đó bấm nút truyền (cast) trong video và chọn “NXT Retro Tube”. Lần sau chỉ cần bấm nút truyền, không cần mã nữa.",
+              x + 40, y + 236, w - 80, 5, 26, C_INK);
+    char who[64]; int nr = Lounge_remotes(who, sizeof(who));
+    char st[160]; if (nr) snprintf(st, sizeof(st), T("Đã kết nối: %s"), who[0] ? who : T("điện thoại")); else snprintf(st, sizeof(st), "%s", T("Chưa có điện thoại nào kết nối"));
+    D_text(F_BOLD, 18, st, x + 40, y + 382, nr ? C_MUSTARD : C_DIM, w - 80, AL_LEFT);
+    int hx = x + 40;
+    hx += D_hint(hx, y + h - 50, KN(K_A), "Mã mới") + 20;
+    hx += D_hint(hx, y + h - 50, KN(K_X), "Tắt tính năng") + 20;
+    D_hint(hx, y + h - 50, KN(K_B), "Đóng");
+}
 static void draw_login(void) {
     if (!A.loginPanel) return;
     D_rect(0, 0, SCREEN_W, SCREEN_H, RGBA(8, 7, 12, 200));
@@ -3254,6 +3397,7 @@ static void draw_login(void) {
 static void draw_overlays(void) {
     draw_kids_lock();
     draw_login();
+    draw_lounge();
     draw_sleep();
     draw_about();
     draw_quick();
@@ -3488,7 +3632,18 @@ static void update(void) {
         else if (A.repeat == 3 && A.queue.count > 1) { int n; do n = rand() % A.queue.count; while (n == A.qpos); play_index(n); }
         else if (A.qpos + 1 < A.queue.count && (S.autoplay || A.repeat == 2)) { toast("Video tiếp theo: %s", A.queue.items[A.qpos + 1].title); play_index(A.qpos + 1); }
         else if (A.repeat == 2 && A.queue.count) play_index(0);
+        else if (st.audio_only && S.autoplay && !A.cur.live) start_radio(true);   /* music mode: endless, like YouTube Music */
     }
+    radio_poll();
+    /* your Google account: history + where you stopped (any device can continue) */
+    if (A.hasCur && Account_signedIn() && S.acc_history && !st.live && st.duration > 0 && !K.enabled) {
+        if (strcmp(A.accWatchId, A.cur.id)) { snprintf(A.accWatchId, sizeof(A.accWatchId), "%s", A.cur.id); A.accStarted = false; A.accPingAt = now + 4000; }
+        int sst = st.state == PS_PLAYING ? 1 : st.state == PS_PAUSED ? 2 : 0;
+        if (!A.accStarted && st.state == PS_PLAYING && (Sint32)(now - A.accPingAt) >= 0) { Account_watchStart(A.cur.id, st.position, st.duration); A.accStarted = true; A.accPingAt = now + 20000; }
+        else if (A.accStarted && sst && ((Sint32)(now - A.accPingAt) >= 0 || sst != A.accLastState)) { Account_watchTime(A.cur.id, st.position, st.duration, sst == 2); A.accPingAt = now + 30000; }
+        A.accLastState = sst;
+    }
+    lounge_tick(now, &st);
     if (A.hasCur && st.state == PS_PLAYING && !st.live) {
         /* A–B loop */
         if (A.abB > 0 && st.position >= A.abB && !A.seekPending) Player_seek(A.abA);
@@ -3741,6 +3896,8 @@ int main(int argc, char **argv) {
     Player_init(S.audio_out);
     Player_setFull60(S.fps60);
     Player_setBoost(S.boost, S.voice);
+    Player_setEq(S.eq);
+    if (S.lounge) Lounge_enable(true, "NXT Retro Tube");
     Sys_applyGain();
     A.lastVol = Sys_volume();
     Player_setAvOffset(S.av_offset_ms);
