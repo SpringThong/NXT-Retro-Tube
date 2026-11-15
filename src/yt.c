@@ -525,7 +525,8 @@ static Job *find(int id) {
 }
 /* fast lanes take resolves and searches (direct API); helper lanes take channel
  * lists and whatever the direct API could not answer */
-static bool for_fast(const Job *j) { return !j->need_helper && j->kind != K_CHANNEL && j->kind != K_FETCH && native_ok(); }
+static bool account_job(const Job *j) { return j->kind == K_SEARCH && !strncmp(j->arg, "@yt:", 4); }
+static bool for_fast(const Job *j) { return account_job(j) || (!j->need_helper && j->kind != K_CHANNEL && j->kind != K_FETCH && native_ok()); }
 static Job *next_job(bool fast_lane) {
     Job *best = NULL;
     for (int i = 0; i < MAX_JOBS; i++) {
@@ -695,6 +696,7 @@ static void *work(void *arg) {
 char *Innertube_player(const char *video_id, char *err, size_t en);
 bool Innertube_search(const char *q, bool newest, int start, int count, VideoList *out, char *err, size_t en);
 bool Innertube_warmup(bool force);
+bool Account_feed(const char *browse, int start, int count, VideoList *out, char *err, size_t en);
 static void *fast_work(void *arg) {
     int lane = (int)(intptr_t)arg;
     if (lane == 0) Innertube_warmup(false);
@@ -726,6 +728,18 @@ static void *fast_work(void *arg) {
                 pthread_mutex_lock(&lock);
                 StreamInfo_free(&cache[cache_next]); copy_stream(&cache[cache_next], &stream); cache_next = (cache_next + 1) % CACHE_N;
                 pthread_mutex_unlock(&lock);
+            }
+        } else if (!strncmp(copy.arg, "@yt:", 4)) {
+            /* a feed of the signed-in account: never handed to yt-dlp */
+            ok = Account_feed(copy.arg + 4, copy.start, copy.count, &list, why, sizeof(why));
+            Log_msg("account feed %s: %s in %.2fs, %d items", copy.arg + 4, ok ? "ok" : why, (SDL_GetTicks() - t0) / 1000.0, list.count);
+            if (!ok) {
+                pthread_mutex_lock(&lock);
+                if (bg) bg_fast--;
+                if ((j = find(copy.id))) { j->state = JOB_FAILED; scopy(j->error, sizeof(j->error), why); }
+                pthread_cond_broadcast(&wake);
+                VideoList_clear(&list);
+                continue;                       /* the loop goes on with the lock held */
             }
         } else {
             ok = Innertube_search(copy.arg, copy.newest, copy.start, copy.count, &list, why, sizeof(why));

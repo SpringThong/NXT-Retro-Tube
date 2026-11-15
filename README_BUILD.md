@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.3 — mã nguồn
+# NXT Retro Tube 2.3.9 — mã nguồn
 
 **Tác giả:** Nguyễn Xuân Thông
 **Ủng hộ tác giả:** MoMo 0339838267 · Vietcombank (VCB) 0581000786219 · PayPal thongkhung2@gmail.com
@@ -36,6 +36,11 @@ Mã ROM chọn lúc biên dịch: `-DNXT_TUBE_ROM_NXREDUX | NEXTUI | STOCK | MUO
 - Tìm kiếm InnerTube gửi `context.user.enableSafetyMode = true` (Chế độ hạn chế của YouTube) khi bật.
 - Lọc: `Kids_allowed()` áp vào trang chủ, kết quả tìm, trang kênh, hàng "Tiếp theo" và khi mở video; từ khóa so khớp sau khi bỏ dấu tiếng Việt.
 - Giao diện trong `src/main.c`: trang Cài đặt → Chế độ trẻ em (`SC_KIDS`), hộp nhập PIN, màn khóa hết giờ / ngoài giờ, màn nghỉ mắt.
+
+## Mới ở 2.3.9
+- `src/account.c`: đăng nhập thiết bị YouTube TV (`/o/oauth2/device/code`, `/o/oauth2/token`, refresh), client id/secret lấy từ base.js của youtube.com/tv nếu cái có sẵn bị từ chối; feed qua client TVHTML5 có Bearer (`FEwhat_to_watch`, `FEsubscriptions`), bộ đọc tile TV + lockupViewModel + videoRenderer; truy vấn `@yt:<browseId>` trong job tìm kiếm (không bao giờ chuyển cho yt-dlp). QR: `src/qrcodegen.c` (Nayuki, MIT).
+- `D_badge`: màu theo nút.
+- QA: server giả có `/o/oauth2/*`, `accounts_list`, `browse` dạng TV.
 
 ## Mới ở 2.3
 - Bố cục rộng: `SCREEN_W` là biến `g_screen_w` (1024 trên 4:3, `768 × rộng/cao` trên màn rộng, tối đa 1366), đặt trong `create_display()`; `GCOLS` (3/4 cột), `NEXT_N`, `SCREEN_R`, `SCREEN_CX`.
@@ -128,7 +133,7 @@ Mã ROM chọn lúc biên dịch: `-DNXT_TUBE_ROM_NXREDUX | NEXTUI | STOCK | MUO
 ```sh
 TOOLCHAIN=/path/to/compiler ./build.sh          # cả bảy bản -> build/<rom>/nxt-retro-tube.elf
 ROM=stock TOOLCHAIN=/path/to/compiler ./build.sh # một ROM
-RUNTIME=./runtime ./package.sh                   # dist/NXT_Retro_Tube_v2.3_{NXRedux,NextUI,Stock,Stock_SmartProS,muOS,Knulli,dArkOS_R36S}.zip + dist/ota-*.zip
+RUNTIME=./runtime ./package.sh                   # dist/NXT_Retro_Tube_v2.3.9_{NXRedux,NextUI,Stock,Stock_SmartProS,muOS,Knulli,dArkOS_R36S}.zip + dist/ota-*.zip
 ```
 Bảy tệp `.elf` dựng từ mã nguồn này (với `SOURCE_DATE_EPOCH=1793034000`) trùng từng byte với bản phát hành 2.1.
 

@@ -413,25 +413,37 @@ void D_icon(const char *name, int x, int y, int size, SDL_Color c) {
     SDL_RenderCopy(R, t, NULL, &(SDL_Rect){x, y, size, size});
 }
 
+/* button colours like on the pads: A red, B yellow, X blue, Y green; shoulders grey, START/SELECT/MENU slate */
+static void badge_colors(const char *label, SDL_Color *bg, SDL_Color *fg) {
+    *fg = RGBA(255, 255, 255, 255);
+    if (!strcmp(label, "A")) *bg = RGBA(0xE5, 0x48, 0x4D, 255);
+    else if (!strcmp(label, "B")) { *bg = RGBA(0xF5, 0xB8, 0x2E, 255); *fg = RGBA(0x1A, 0x16, 0x10, 255); }
+    else if (!strcmp(label, "X")) *bg = RGBA(0x3E, 0x8B, 0xFF, 255);
+    else if (!strcmp(label, "Y")) *bg = RGBA(0x2F, 0xB5, 0x62, 255);
+    else if (label[0] == 'L' || label[0] == 'R') *bg = RGBA(0x7A, 0x80, 0x8C, 255);           /* L1 R1 L2 R2 L3 R3, "L1 R1" */
+    else if (!strcmp(label, "UD") || !strcmp(label, "LR")) { *bg = RGBA(0xE8, 0xE3, 0xDA, 255); *fg = RGBA(0x1A, 0x16, 0x10, 255); }
+    else *bg = RGBA(0x4A, 0x52, 0x63, 255);                                                   /* START, SELECT, MENU, ... */
+}
 void D_badge(int x, int y, const char *label, int h) {
+    SDL_Color bg, fg; badge_colors(label, &bg, &fg);
     if (!strcmp(label, "UD") || !strcmp(label, "LR")) {   /* d-pad glyphs drawn, fonts lack arrows */
-        int w = h + 14; D_round(x, y, w, h, h / 2, C_INK);
+        int w = h + 14; D_round(x, y, w, h, h / 2, bg);
         float cx = x + w / 2.0f, cy = y + h / 2.0f;
-        if (label[0] == 'U') { D_tri(cx - 6, cy - 2, cx + 6, cy - 2, cx, cy - 9, C_DARK); D_tri(cx - 6, cy + 2, cx + 6, cy + 2, cx, cy + 9, C_DARK); }
-        else { D_tri(cx - 2, cy - 6, cx - 2, cy + 6, cx - 10, cy, C_DARK); D_tri(cx + 2, cy - 6, cx + 2, cy + 6, cx + 10, cy, C_DARK); }
+        if (label[0] == 'U') { D_tri(cx - 6, cy - 2, cx + 6, cy - 2, cx, cy - 9, fg); D_tri(cx - 6, cy + 2, cx + 6, cy + 2, cx, cy + 9, fg); }
+        else { D_tri(cx - 2, cy - 6, cx - 2, cy + 6, cx - 10, cy, fg); D_tri(cx + 2, cy - 6, cx + 2, cy + 6, cx + 10, cy, fg); }
         return;
     }
     int w = D_textW(F_PIXEL, h - 4, label) + (strlen(label) > 1 ? 14 : 0);
     if (w < h) w = h;
-    D_round(x, y, w, h, h / 2, C_INK);
-    D_text(F_PIXEL, h - 4, label, x + w / 2, y + (h - D_fontHeight(F_PIXEL, h - 4)) / 2, C_DARK, 0, AL_CENTER);
+    D_round(x, y, w, h, h / 2, bg);
+    D_text(F_PIXEL, h - 4, label, x + w / 2, y + (h - D_fontHeight(F_PIXEL, h - 4)) / 2, fg, 0, AL_CENTER);
 }
 int D_hint(int x, int y, const char *key, const char *text) {
     int h = 28;
     int w = D_textW(F_PIXEL, h - 4, key) + (strlen(key) > 1 ? 14 : 0); if (w < h) w = h;
     if (!strcmp(key, "UD") || !strcmp(key, "LR")) w = h + 14;
     D_badge(x, y, key, h);
-    int tw = D_text(F_MED, 18, text, x + w + 8, y + 2, C_MUTED, 0, AL_LEFT);
+    int tw = D_text(F_MED, 18, text, x + w + 8, y + 2, C_INK, 0, AL_LEFT);
     return w + 8 + tw;
 }
 static void arc(float cx, float cy, float r, float t, float a0, float a1, SDL_Color c) {

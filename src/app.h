@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define APP_NAME "NXT Retro Tube"
-#define APP_VERSION "2.3"
+#define APP_VERSION "2.3.9"
 /* scanout.c: direct panel output (Smart Pro S, when SDL cannot open the panel) */
 bool Scanout_open(int *lw, int *lh);
 SDL_Surface *Scanout_surface(void);
@@ -42,6 +42,8 @@ void Scanout_setBlank(bool on);
 #endif
 /* status.c: battery (-1 = unknown), charger, Wi-Fi bars (0 = not connected), Bluetooth link */
 typedef struct { int battery; bool charging, plugged, full; int wifi; bool bt; } SysStatus;
+/* account.c: Google account (YouTube TV device sign-in) */
+enum { ACC_IDLE, ACC_WORKING, ACC_SHOW, ACC_DONE, ACC_ERROR };
 void Sys_status(SysStatus *out);
 /* the layout is 768 units tall; its width follows the screen: 1024 on 4:3, ~1365 on 16:9 */
 extern int g_screen_w;
@@ -254,6 +256,13 @@ int AudioRoute_setBottom(bool host);
 typedef struct { int lang, av_offset_ms, audio_out, home_mode, dac_volume; bool autoplay, prefetch, telex, bottom_dac; int keymap[KM_COUNT];
                  int sub_mode, sub_size; char sub_lang[16]; bool ota_auto, sleep_pause, fps60; } Settings;
 extern Settings S;
+void Account_init(void);
+bool Account_signedIn(void);
+const char *Account_name(void);
+void Account_logout(void);
+void Account_startLogin(void);
+void Account_cancelLogin(void);
+int Account_loginState(char *code, size_t cn, char *url, size_t un, char *msg, size_t mn, int *secs_left);
 void Settings_load(void);
 void Settings_save(void);
 void Settings_defaultKeys(void);

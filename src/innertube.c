@@ -60,6 +60,7 @@ static char *http_any(const char *url, const char *body, const char *headers, co
     return r ? r : http_req(url, body, headers, ua, false, err, en);   /* wrong clock / CA */
 }
 
+char *Innertube_http(const char *url, const char *body, const char *headers, const char *ua, char *err, size_t en) { return http_any(url, body, headers, ua, err, en); }
 /* plain GET (subtitles): a browser user agent, the full CA bundle not needed for youtube.com */
 char *Innertube_get(const char *url, char *err, size_t en) {
     return http_any(url, NULL, "Origin: https://www.youtube.com\r\nReferer: https://www.youtube.com/\r\n", CHROME_UA, err, en);

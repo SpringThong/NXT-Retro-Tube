@@ -45,13 +45,13 @@ static Uint32 repeat_at[K_COUNT];
 /* ---------- state ---------- */
 typedef enum { SC_HOME, SC_SEARCH, SC_WATCH, SC_FULL, SC_LIBRARY, SC_SETTINGS, SC_KIDS } Screen;
 typedef enum { PANEL_NONE, PANEL_QUALITY, PANEL_SPEED, PANEL_OPTIONS } Panel;
-#define CHIPS 8
-static const char *CHIP_LABEL[CHIPS] = {"Dành cho bạn", "Âm nhạc", "Game retro", "Chill & Lofi", "Hoạt hình", "Trực tiếp", "Bóng đá", "Mới tải lên"};
-static const char *CHIP_QUERY[CHIPS] = {"video thịnh hành việt nam", "nhạc việt mới nhất", "retro game handheld", "lofi chill", "phim hoạt hình", "radio 24/7 live", "bóng đá highlights", "việt nam"};
-static const bool CHIP_NEWEST[CHIPS] = {false, false, false, false, false, false, false, true};
+#define CHIPS 9
+static const char *CHIP_LABEL[CHIPS] = {"Dành cho bạn", "Đăng ký", "Âm nhạc", "Game retro", "Chill & Lofi", "Hoạt hình", "Trực tiếp", "Bóng đá", "Mới tải lên"};
+static const char *CHIP_QUERY[CHIPS] = {"video thịnh hành việt nam", "video mới nhất hôm nay", "nhạc việt mới nhất", "retro game handheld", "lofi chill", "phim hoạt hình", "radio 24/7 live", "bóng đá highlights", "việt nam"};
+static const bool CHIP_NEWEST[CHIPS] = {false, false, false, false, false, false, false, false, true};
 /* kids mode home: tab 0 and the last tab follow the approved channels when there are some */
-static const char *KIDS_LABEL[CHIPS] = {"Cho bé", "Hoạt hình", "Nhạc thiếu nhi", "Học tiếng Anh", "Truyện cổ tích", "Khoa học vui", "Vận động cho bé", "Kênh đã duyệt"};
-static const char *KIDS_QUERY[CHIPS] = {"phim hoạt hình cho bé", "phim hoạt hình thiếu nhi", "nhạc thiếu nhi vui nhộn", "học tiếng anh cho bé", "truyện cổ tích việt nam", "khoa học vui cho bé", "bé tập thể dục vận động", "phim hoạt hình cho bé"};
+static const char *KIDS_LABEL[CHIPS] = {"Cho bé", "Bài hát cho bé", "Hoạt hình", "Nhạc thiếu nhi", "Học tiếng Anh", "Truyện cổ tích", "Khoa học vui", "Vận động cho bé", "Kênh đã duyệt"};
+static const char *KIDS_QUERY[CHIPS] = {"phim hoạt hình cho bé", "bài hát thiếu nhi hay nhất", "phim hoạt hình thiếu nhi", "nhạc thiếu nhi vui nhộn", "học tiếng anh cho bé", "truyện cổ tích việt nam", "khoa học vui cho bé", "bé tập thể dục vận động", "phim hoạt hình cho bé"};
 static const char *const *chip_labels(void) { return K.enabled ? KIDS_LABEL : CHIP_LABEL; }
 static bool chip_newest(int t) { return K.enabled ? false : CHIP_NEWEST[t]; }
 static const char *QUALITY_ID[] = {"auto", "1080", "720p60", "720", "480", "360", "audio"};
@@ -79,7 +79,7 @@ typedef struct {
     char err[160];
 } Feed;
 
-enum { SET_LANG, SET_QUALITY, SET_AUTOPLAY, SET_PREFETCH, SET_SUBS, SET_SUBLANG, SET_SUBSIZE, SET_TELEX, SET_AVSYNC, SET_AUDIO, SET_BOTTOM, SET_FPS60, SET_SLEEP_ACT, SET_OTA_AUTO, SET_HOME, SET_KEYS, SET_KIDS, SET_UPDATE,
+enum { SET_LANG, SET_QUALITY, SET_AUTOPLAY, SET_PREFETCH, SET_SUBS, SET_SUBLANG, SET_SUBSIZE, SET_TELEX, SET_AVSYNC, SET_AUDIO, SET_BOTTOM, SET_FPS60, SET_SLEEP_ACT, SET_OTA_AUTO, SET_HOME, SET_ACCOUNT, SET_KEYS, SET_KIDS, SET_UPDATE,
        SET_CACHE, SET_HISTORY, SET_SEARCHES, SET_VERSION, SET_ABOUT, SET_ICON, SET_COUNT };
 #ifdef NXT_TUBE_ROM_NXREDUX
 #define SET_ROWS SET_COUNT          /* Tools-menu icon: NX Redux launcher only */
@@ -105,6 +105,7 @@ static struct {
     /* library */
     int libTab, libSel; float lscroll;
     /* settings */
+    bool loginPanel; int loginState, loginSecs; char loginCode[32], loginUrl[160], loginMsg[200];
     int setSel; float setScroll; bool keyPage; int keySelRow; int capture; Uint32 captureUntil; int confirmRow; Uint32 confirmUntil;
     char iconStatus[160]; int iconState;
     /* playback */
@@ -578,6 +579,13 @@ static void feed_queries(int tab, Feed *f) {
         if (!f->nq) snprintf(f->q[f->nq++], 128, "%s", KIDS_QUERY[tab]);
         return;
     }
+    /* signed in: YouTube's own home for you and your subscriptions */
+    if (Account_signedIn() && ((tab == 0 && S.home_mode == 0) || tab == 1)) { snprintf(f->q[f->nq++], 128, "@yt:%s", tab ? "FEsubscriptions" : "FEwhat_to_watch"); return; }
+    if (tab == 1) {   /* not signed in: the newest videos of the channels you follow here */
+        const VideoList *ch = Store_channels();
+        for (int i = 0; i < ch->count && f->nq < MAXQ; i++) if (ch->items[i].channel_id[0]) snprintf(f->q[f->nq++], 128, "@ch:%s", ch->items[i].channel_id);
+        if (f->nq) return;
+    }
     if (tab == 0 && S.home_mode == 0) {
         /* recommendations from what you searched and watched */
         const VideoList *rec = Store_recentSearches();
@@ -605,7 +613,7 @@ static void request_page(int tab, bool priority) {
 static void load_feed(int tab, bool force) {
     Feed *f = &A.feed[tab];
     if (feed_busy(f)) return;
-    char key[16]; snprintf(key, sizeof(key), "%stab%d%s", K.enabled ? "k" : "", tab, tab == 0 && S.home_mode == 0 ? "r" : "");
+    char key[24]; snprintf(key, sizeof(key), "%stb%d%s%s", K.enabled ? "k" : "", tab, tab == 0 && S.home_mode == 0 ? "r" : "", !K.enabled && tab <= 1 && Account_signedIn() ? "a" : "");
     long long age = 0;
     if (!f->list.count) { Store_loadFeed(key, &f->list, &age); Kids_filter(&f->list); }
     if (force || !f->list.count || age > 1800 || !f->tried) {
@@ -936,6 +944,12 @@ static void setting_action(int row) {
     Uint32 now = SDL_GetTicks();
     switch (row) {
         case SET_KEYS: A.keyPage = true; A.keySelRow = 0; A.capture = -1; return;
+        case SET_ACCOUNT:
+            if (!Account_signedIn()) { Account_startLogin(); A.loginPanel = true; return; }
+            if (A.confirmRow == SET_ACCOUNT && now < A.confirmUntil) {
+                A.confirmRow = -1; Account_logout(); reset_feeds(); load_feed(A.tab, true); toast("Đã đăng xuất tài khoản Google");
+            } else { A.confirmRow = SET_ACCOUNT; A.confirmUntil = now + 4000; toast("Bấm A lần nữa để đăng xuất"); }
+            return;
         case SET_SUBLANG: {
             int pk = Subs_packFor(S.sub_lang);
             if (pk && !Subs_packReady(pk)) {
@@ -1122,6 +1136,11 @@ static void handle_key(Key k) {
         A.sleepAt += 15 * 60000u; A.sleepFading = false; Player_setFade(1); toast("Thêm 15 phút"); return;
     }
     if (A.pinFor) { pin_key(k); return; }
+    if (A.loginPanel) {                                 /* Google sign-in: B closes, A retries after an error */
+        if (k == K_B) { Account_cancelLogin(); A.loginPanel = false; }
+        else if (k == K_A && A.loginState == ACC_ERROR) Account_startLogin();
+        return;
+    }
 
     if (k == K_HOME) {
         /* one press can reach us twice (pad button + keyboard key, or a key the firmware
@@ -1719,6 +1738,16 @@ static void setting_text(int row, char *label, size_t ln, char *value, size_t vn
             snprintf(label, ln, "%s", T("Cổng sạc dùng cho DAC")); snprintf(value, vn, "%s", T(onoff[S.bottom_dac]));
             snprintf(note, nn, "%s · %s", r == 1 ? T("Cổng dưới đang ở chế độ DAC") : r == 2 ? T("Cổng dưới đang ở chế độ sạc") : T("Không đọc được trạng thái cổng"), T("không sạc được khi bật")); break; }
         case SET_HOME: snprintf(label, ln, "%s", T("Trang chủ gợi ý")); snprintf(value, vn, "%s", S.home_mode ? T("Thịnh hành") : T("Theo lịch sử")); snprintf(note, nn, "%s", T("Gợi ý từ từ khóa đã tìm và kênh đã xem")); break;
+        case SET_ACCOUNT:
+            snprintf(label, ln, "%s", T("Tài khoản Google"));
+            if (Account_signedIn()) {
+                snprintf(value, vn, "%s", Account_name()[0] ? Account_name() : T("Đã đăng nhập"));
+                snprintf(note, nn, "%s", A.confirmRow == SET_ACCOUNT ? T("Bấm A lần nữa để đăng xuất") : T("Trang chủ “Dành cho bạn” và tab “Đăng ký” lấy từ tài khoản · A để đăng xuất"));
+            } else {
+                snprintf(value, vn, "%s", T("Chưa đăng nhập"));
+                snprintf(note, nn, "%s", T("A để đăng nhập bằng mã trên điện thoại (google.com/device) · nên dùng tài khoản phụ"));
+            }
+            break;
         case SET_KEYS: snprintf(label, ln, "%s", T("Đổi phím")); snprintf(value, vn, "%s", "A"); snprintf(note, nn, "%s", T("Gán lại A, B, X, Y, L1, R1, L2, R2, START, SELECT")); break;
         case SET_ICON: snprintf(label, ln, "%s", T("Icon trong menu Tools")); snprintf(value, vn, "%s", A.iconState == 1 ? T("Đã cài") : A.iconState == 0 ? T("Chưa cài") : T("Không hỗ trợ")); snprintf(note, nn, "%s", A.iconStatus[0] ? A.iconStatus : T("NX Redux (mọi phiên bản): thêm icon NXT Retro Tube vào menu Tools · tự sửa lại sau khi cập nhật hệ điều hành")); break;
         case SET_CACHE: snprintf(label, ln, "%s", T("Xóa bộ nhớ đệm")); snprintf(value, vn, "%s", "A"); snprintf(note, nn, "%s", T("Ảnh thu nhỏ và danh sách đã lưu")); break;
@@ -2434,8 +2463,52 @@ static void draw_sleep(void) {
     D_round(SCREEN_CX - w / 2 + 6, y + 6, w, 50, 12, C_BLACK); D_round(SCREEN_CX - w / 2, y, w, 50, 12, C_MUSTARD);
     D_text(F_SEMI, 20, b, SCREEN_CX, y + 25 - D_fontHeight(F_SEMI, 20) / 2, C_DARK, w - 30, AL_CENTER);
 }
+#include "qrcodegen.h"
+/* Google sign-in: the code to type on google.com/device, and a QR code that opens it already filled in */
+static void draw_login(void) {
+    if (!A.loginPanel) return;
+    D_rect(0, 0, SCREEN_W, SCREEN_H, RGBA(8, 7, 12, 200));
+    int w = 820, h = 470, x = (SCREEN_W - w) / 2, y = 130;
+    D_round(x + 10, y + 10, w, h, 18, C_BLACK); D_round(x, y, w, h, 18, C_SURFACE); D_roundRing(x, y, w, h, 18, 3, C_BLACK);
+    D_icon("users", x + 30, y + 28, 32, C_MUSTARD);
+    D_text(F_XBOLD, 28, "Đăng nhập Google", x + 74, y + 26, C_INK, 0, AL_LEFT);
+    if (A.loginState == ACC_SHOW && A.loginCode[0]) {
+        /* QR (left) */
+        char link[300]; snprintf(link, sizeof(link), "%s?user_code=%s", A.loginUrl, A.loginCode);
+        static uint8_t qr[qrcodegen_BUFFER_LEN_FOR_VERSION(10)], tmp[qrcodegen_BUFFER_LEN_FOR_VERSION(10)];
+        int qs = 250, qx = x + 34, qy = y + 96;
+        D_round(qx - 12, qy - 12, qs + 24, qs + 24, 12, RGBA(255, 255, 255, 255));
+        if (qrcodegen_encodeText(link, tmp, qr, qrcodegen_Ecc_MEDIUM, 1, 10, qrcodegen_Mask_AUTO, true)) {
+            int n = qrcodegen_getSize(qr), m = qs / n, off = (qs - m * n) / 2;
+            for (int r = 0; r < n; r++) for (int c = 0; c < n; c++)
+                if (qrcodegen_getModule(qr, c, r)) D_rect(qx + off + c * m, qy + off + r * m, m, m, RGBA(0, 0, 0, 255));
+        }
+        D_text(F_REG, 16, "Quét bằng điện thoại", qx + qs / 2, qy + qs + 20, C_MUTED, 0, AL_CENTER);
+        /* steps (right) */
+        int tx = x + 330, tw = w - 360;
+        D_text(F_MED, 19, "1. Trên điện thoại, mở", tx, y + 96, C_MUTED, tw, AL_LEFT);
+        const char *shown = strstr(A.loginUrl, "://") ? strstr(A.loginUrl, "://") + 3 : A.loginUrl;
+        D_text(F_BOLD, 26, shown, tx + 20, y + 124, C_INK, tw - 20, AL_LEFT);
+        D_text(F_MED, 19, "2. Nhập mã này:", tx, y + 176, C_MUTED, tw, AL_LEFT);
+        D_round(tx + 20, y + 206, tw - 40, 76, 12, C_BAR); D_roundRing(tx + 20, y + 206, tw - 40, 76, 12, 3, C_MUSTARD);
+        D_text(F_PIXEL, 56, A.loginCode, tx + tw / 2, y + 214, C_MUSTARD, tw - 60, AL_CENTER);
+        D_text(F_MED, 19, "3. Chọn tài khoản rồi bấm Cho phép", tx, y + 300, C_MUTED, tw, AL_LEFT);
+        char left[64]; int sec = A.loginSecs < 0 ? 0 : A.loginSecs;
+        snprintf(left, sizeof(left), T("Mã còn hiệu lực %d:%02d"), sec / 60, sec % 60);
+        D_text(F_REG, 17, left, tx, y + 340, C_DIM, tw, AL_LEFT);
+    } else {
+        if (A.loginState != ACC_ERROR) D_spinner(x + w / 2, y + 220, 22, C_MUSTARD);
+        D_textBox(F_SEMI, 22, A.loginMsg[0] ? A.loginMsg : T("Đang lấy mã đăng nhập…"), x + 40, y + (A.loginState == ACC_ERROR ? 170 : 270), w - 80, 3, 30, A.loginState == ACC_ERROR ? C_TOMATO : C_INK);
+    }
+    if (A.loginState == ACC_SHOW) D_textBox(F_REG, 17, A.loginMsg, x + 30, y + h - 76, w - 60, 1, 22, C_MUTED);
+    int hx = x + 30;
+    if (A.loginState == ACC_ERROR) hx += D_hint(hx, y + h - 46, KN(K_A), "Thử lại") + 20;
+    D_hint(hx, y + h - 46, KN(K_B), "Hủy");
+    D_text(F_REG, 15, "Chỉ dùng mã đăng nhập YouTube · không cần mật khẩu trên máy", x + w - 30, y + h - 40, C_DIM, w - 300, AL_RIGHT);
+}
 static void draw_overlays(void) {
     draw_kids_lock();
+    draw_login();
     draw_sleep();
     draw_about();
     draw_quick();
@@ -2629,8 +2702,20 @@ static void stream_retry(void) {
     Player_close(); A.streamReady = false; A.watchErr[0] = 0;
     A.resolveJob = Yt_resolveHelper(A.cur.id); A.resolveSince = SDL_GetTicks();
 }
+static void login_poll(void) {
+    if (!A.loginPanel) return;
+    int st = Account_loginState(A.loginCode, sizeof(A.loginCode), A.loginUrl, sizeof(A.loginUrl), A.loginMsg, sizeof(A.loginMsg), &A.loginSecs);
+    if (st == ACC_DONE) {
+        A.loginPanel = false; A.loginState = ACC_IDLE;
+        reset_feeds(); A.tab = 0; load_feed(0, true);
+        toast(T("Đã đăng nhập: %s"), Account_name()[0] ? Account_name() : "Google");
+        return;
+    }
+    A.loginState = st;
+}
 static void update(void) {
     poll_jobs();
+    login_poll();
     stream_retry();
     cpu_tick(SDL_GetTicks());
     kids_tick();
@@ -2873,6 +2958,7 @@ int main(int argc, char **argv) {
     char res[1200]; snprintf(res, sizeof(res), "%s/res", paths.app);
     if (!D_init(A.ren, res)) { Log_msg("fonts missing in %s", res); }
     Store_init();
+    Account_init();
     for (int i = 0; i < NQ; i++) if (!strcmp(QUALITY_ID[i], Store_quality())) A.quality = i;
     A.speedIx = 2; A.capture = -1; A.confirmRow = -1;
     A.telexOff = !S.telex;
