@@ -328,6 +328,7 @@ static void start_player(double start, bool keep_position) {
         src.audio_only = audio_only;
     } else {
         StreamInfo *s = &A.stream;
+        Preview_set(A.cur.id, s->sb);   /* frames load only while you seek */
         src.headers = s->headers; src.user_agent = s->user_agent;
         src.live = s->info.live;
         int vi = pick_video();
@@ -387,6 +388,7 @@ static void open_video(const VideoItem *v, const VideoList *from, int index) {
     if (A.resolveJob) { Yt_forget(A.resolveJob); A.resolveJob = 0; }
     A.cur = *v; A.hasCur = true; A.watchErr[0] = 0;
     A.abA = A.abB = -1; A.sponsorDone = 0; A.keyLock = false;
+    Preview_set(NULL, NULL);
     if (S.sponsor && !v->live) Sponsor_fetch(v->id);
     if (from && from != &A.queue) {
         VideoList_copy(&A.queue, from);
@@ -2411,26 +2413,27 @@ static void draw_progress(int x, int y, int w, int h, PlayerStatus *st) {
         static Uint32 seek_seen; static double seek_t;
         if (A.seekPending) { seek_seen = SDL_GetTicks(); seek_t = A.seekTarget; }
         if (seek_seen && SDL_GetTicks() - seek_seen < 900) {
+            /* small on purpose (handheld screens): 176×99 full screen, 136×77 in the player box;
+             * YouTube's frames are 160×90, so this is about their own size: sharp and cheap to draw */
             bool big = w > 900;
-            int pw = big ? 256 : 192, ph = pw * 9 / 16;
-            int tx = x + (int)(w * fmin(1, seek_t / st->duration)) - pw / 2;
-            if (tx < x) tx = x;
-            if (tx + pw > x + w) tx = x + w - pw;
+            int pw = big ? 176 : 136, ph = pw * 9 / 16;
             int c = chapter_at(seek_t);
-            int ty = y - 18 - ph - (c >= 0 ? 26 : 0) - 30;
-            /* no picture (it costs downloads and heat): only the chapter you will land in */
             SDL_Texture *tex = NULL; SDL_Rect src = {0};
-            bool have = false;
-            if (c >= 0) {
-                int boxh = (have ? ph : 0) + 30 + (c >= 0 ? 26 : 0);
-                int by = y - 18 - boxh;
-                D_round(tx - 4, by - 4, pw + 8, boxh + 8, 10, C_BLACK);
-                if (have) { SDL_RenderCopy(A.ren, tex, &src, &(SDL_Rect){tx, by, pw, ph}); D_roundRing(tx - 4, by - 4, pw + 8, ph + 8, 10, 3, C_MUSTARD); }
+            bool have = Preview_frame(A.ren, seek_t, &tex, &src);
+            if (have || c >= 0) {
+                int bw = pw;
+                if (!have && c >= 0) { bw = D_textW(F_SEMI, 14, A.stream.chap[c].title) + 16; if (bw > 260) bw = 260; if (bw < 90) bw = 90; }
+                int tx = x + (int)(w * fmin(1, seek_t / st->duration)) - bw / 2;
+                if (tx < x) tx = x;
+                if (tx + bw > x + w) tx = x + w - bw;
+                int boxh = (have ? ph : 0) + 24 + (c >= 0 ? 20 : 0);
+                int by = y - 12 - boxh;
+                D_round(tx - 3, by - 3, bw + 6, boxh + 6, 8, RGBA(8, 7, 12, 230));
+                if (have) { SDL_RenderCopy(A.ren, tex, &src, &(SDL_Rect){tx, by, pw, ph}); D_roundRing(tx - 3, by - 3, pw + 6, ph + 6, 8, 2, C_MUSTARD); }
                 char tm[24]; fmt_time(seek_t, tm, sizeof(tm));
-                D_text(F_PIXEL, 26, tm, tx + pw / 2, by + (have ? ph : 0) + 2, C_INK, 0, AL_CENTER);
-                if (c >= 0) D_text(F_SEMI, 16, A.stream.chap[c].title, tx + pw / 2, by + (have ? ph : 0) + 30, C_MUSTARD, pw, AL_CENTER);
+                D_text(F_PIXEL, 22, tm, tx + bw / 2, by + (have ? ph : 0) + 1, C_INK, 0, AL_CENTER);
+                if (c >= 0) D_text(F_SEMI, 14, A.stream.chap[c].title, tx + bw / 2, by + (have ? ph : 0) + 24, C_MUSTARD, bw - 6, AL_CENTER);
             }
-            (void)ty;
         }
     } else if (st->live) D_round(x, y, w, h, h / 2, C_TOMATO);
 }

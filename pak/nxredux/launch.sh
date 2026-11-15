@@ -1,5 +1,5 @@
 #!/bin/sh
-# NXT Retro Tube 2.3.11 — by Nguyễn Xuân Thông — NX Redux (TrimUI Brick Pro)
+# NXT Retro Tube 2.3.12 — by Nguyễn Xuân Thông — NX Redux (TrimUI Brick Pro)
 DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 cd "$DIR" || exit 1
 PLATFORM="${PLATFORM:-tg5040}"
