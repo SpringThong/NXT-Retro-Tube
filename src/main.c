@@ -1378,7 +1378,7 @@ static void capture_assign(int phys) {
     Settings_save();
     toast(T("Đã gán %s cho chức năng %s"), phys_name(phys), KM_LABEL[row]);
 }
-#define CUST_ROWS (2 + CH_N + 5)
+#define CUST_ROWS (1 + CH_N + 5)   /* colours, home tabs, status icons (no custom app name: the app keeps its own) */
 static const char *STATUS_ITEM[5] = {"Pin", "Wi-Fi", "Bluetooth", "Đồng hồ", "DAC USB"};
 static void open_text(int target) {
     A.textFor = target; A.raw[0] = 0; A.query[0] = 0; A.rawLiteral = false; A.wordEntry = false;
@@ -1391,10 +1391,8 @@ static void cust_key(Key k) {
     else if (k == K_DOWN && r < CUST_ROWS - 1) A.custSel++;
     else if (k == K_B) { A.custPage = false; Settings_save(); reset_feeds(); load_feed(A.tab, false); }
     else if (r == 0 && (k == K_LEFT || k == K_RIGHT || k == K_A)) { S.theme = (S.theme + THEMES + (k == K_LEFT ? -1 : 1)) % THEMES; D_setTheme(S.theme); Settings_save(); }
-    else if (r == 1 && k == K_A) open_text(1);
-    else if (r == 1 && k == K_X) { S.app_title[0] = 0; Settings_save(); toast("Đã trả lại tên mặc định"); }
-    else if (r >= 2 && r < 2 + CH_N) {
-        int i = r - 2, id = order[i];
+    else if (r >= 1 && r < 1 + CH_N) {
+        int i = r - 1, id = order[i];
         if (k == K_A) {
             if (id >= CH_CUSTOM0) open_text(2 + id - CH_CUSTOM0);
             else { S.chip_hidden ^= 1u << id; Settings_save(); }
@@ -1402,7 +1400,7 @@ static void cust_key(Key k) {
         else if ((k == K_L1 || k == K_LEFT) && i > 0) { int t = order[i - 1]; order[i - 1] = id; order[i] = t; chip_save_order(order); A.custSel--; Settings_save(); }
         else if ((k == K_R1 || k == K_RIGHT) && i < CH_N - 1) { int t = order[i + 1]; order[i + 1] = id; order[i] = t; chip_save_order(order); A.custSel++; Settings_save(); }
         else if (k == K_Y) { S.chip_order[0] = 0; S.chip_hidden = 0; Settings_save(); toast("Đã trả lại thứ tự tab mặc định"); }
-    } else if (r >= 2 + CH_N && k == K_A) { S.status_hide ^= 1u << (r - 2 - CH_N); Settings_save(); }
+    } else if (r >= 1 + CH_N && k == K_A) { S.status_hide ^= 1u << (r - 1 - CH_N); Settings_save(); }
 }
 static void settings_key(Key k) {
     if (A.custPage) { cust_key(k); return; }
@@ -1785,7 +1783,6 @@ static void draw_logo(int x, int y) {
     D_roundRing(x, y + 6, 36, 28, 6, 3, C_TOMATO);
     D_tri(x + 13, y + 12, x + 13, y + 26, x + 25, y + 19, C_TOMATO);
     D_line(x + 11, y, x + 18.5f, y + 6.5f, 2.6f, C_TOMATO); D_line(x + 26, y, x + 18.5f, y + 6.5f, 2.6f, C_TOMATO);
-    if (S.app_title[0]) { D_text(F_XBOLD, 32, S.app_title, x + 48, y + 19 - D_fontHeight(F_XBOLD, 32) / 2, C_INK, 236, AL_LEFT); return; }
     int w = D_text(F_PIXEL, 46, "NXT", x + 48, y - 8, C_INK, 0, AL_LEFT);
     int w2 = D_text(F_PIXEL, 46, "TUBE", x + 48 + w, y - 8, C_TOMATO, 0, AL_LEFT);
     int bx = x + 48 + w + w2 + 10;
@@ -2232,7 +2229,7 @@ static void setting_text(int row, char *label, size_t ln, char *value, size_t vn
                 snprintf(note, nn, "%s", T("A để đăng nhập bằng mã trên điện thoại (google.com/device) · nên dùng tài khoản phụ"));
             }
             break;
-        case SET_THEME: snprintf(label, ln, "%s", T("Màu giao diện")); snprintf(value, vn, "%s", T(D_themeName(S.theme))); snprintf(note, nn, "%s", T("6 bộ màu · đổi là thấy ngay · thêm tên, thứ tự tab trong mục Tùy biến")); break;
+        case SET_THEME: snprintf(label, ln, "%s", T("Màu giao diện")); snprintf(value, vn, "%s", T(D_themeName(S.theme))); snprintf(note, nn, "%s", T("6 bộ màu · đổi là thấy ngay · thứ tự tab trong mục Tùy biến")); break;
         case SET_SAVER: snprintf(label, ln, "%s", T("Tiết kiệm pin tự động")); snprintf(value, vn, "%s", T(onoff[S.saver]));
             snprintf(note, nn, "%s", T("Pin dưới 20% và không sạc: tối đa 480p 30 hình, tắt lấy luồng trước, giảm sáng nhẹ · mát máy hơn")); break;
         case SET_SPONSOR: { static const char *m[3] = {"Tắt", "Tự bỏ qua", "Chỉ báo"};
@@ -2248,7 +2245,7 @@ static void setting_text(int row, char *label, size_t ln, char *value, size_t vn
         case SET_AUTODL: snprintf(label, ln, "%s", T("Tự tải video mới khi sạc")); snprintf(value, vn, "%s", T(onoff[S.autodl]));
             snprintf(note, nn, "%s", T("Đang cắm sạc + có Wi-Fi: tự tải 1 video mới nhất của mỗi kênh theo dõi (tối đa 5 video/ngày, 480p) để xem không cần mạng")); break;
         case SET_CUSTOM: snprintf(label, ln, "%s", T("Tùy biến giao diện")); snprintf(value, vn, "%s", "A");
-            snprintf(note, nn, "%s", T("Màu, tên ứng dụng, sắp xếp / ẩn / thêm tab trang chủ, ẩn biểu tượng thanh trạng thái")); break;
+            snprintf(note, nn, "%s", T("Màu, sắp xếp / ẩn / thêm tab trang chủ, ẩn biểu tượng thanh trạng thái")); break;
         case SET_IMPORT: snprintf(label, ln, "%s", T("Nhập kênh từ Google Takeout")); snprintf(value, vn, "%s", "A");
             snprintf(note, nn, T("Chép file subscriptions.csv (Takeout › YouTube › đăng ký) vào %s rồi bấm A"), export_dir()); break;
         case SET_EXPORT: snprintf(label, ln, "%s", T("Xuất video & nhạc đã tải")); snprintf(value, vn, "%s", "A");
@@ -2301,10 +2298,9 @@ static void draw_custom(void) {
         bool on = r == A.custSel;
         char label[120], value[80]; const char *section = NULL; bool hidden = false;
         if (r == 0) { section = "Giao diện"; snprintf(label, sizeof(label), "%s", T("Màu giao diện")); snprintf(value, sizeof(value), "‹ %s ›", T(D_themeName(S.theme))); }
-        else if (r == 1) { snprintf(label, sizeof(label), "%s", T("Tên ứng dụng")); snprintf(value, sizeof(value), "%s", S.app_title[0] ? S.app_title : T("Mặc định")); }
-        else if (r < 2 + CH_N) {
-            int id = order[r - 2];
-            if (r == 2) section = "Tab trang chủ";
+        else if (r < 1 + CH_N) {
+            int id = order[r - 1];
+            if (r == 1) section = "Tab trang chủ";
             if (id >= CH_CUSTOM0) {
                 const char *kw = S.custom_chip[id - CH_CUSTOM0];
                 snprintf(label, sizeof(label), "%s", kw[0] ? kw : T("+ Tab từ khóa của bạn"));
@@ -2316,7 +2312,7 @@ static void draw_custom(void) {
                 snprintf(value, sizeof(value), "%s", hidden ? T("Ẩn") : T("Hiện"));
             }
         } else {
-            int b = r - 2 - CH_N;
+            int b = r - 1 - CH_N;
             if (b == 0) section = "Thanh trạng thái";
             snprintf(label, sizeof(label), "%s", T(STATUS_ITEM[b]));
             hidden = S.status_hide & (1u << b);
@@ -2335,7 +2331,7 @@ static void draw_custom(void) {
     int px = SCREEN_W - 360, pw = 336;
     D_shadow(px, 96, pw, 300, 14, 6); D_round(px, 96, pw, 300, 14, C_BG); D_roundRing(px, 96, pw, 300, 14, 2, C_LINE);
     D_text(F_BOLD, 15, "Xem trước", px + 16, 106, C_DIM, 0, AL_LEFT);
-    D_text(F_XBOLD, 24, S.app_title[0] ? S.app_title : "NXT TUBE", px + 16, 132, S.app_title[0] ? C_INK : C_TOMATO, pw - 32, AL_LEFT);
+    D_text(F_XBOLD, 24, "NXT TUBE", px + 16, 132, C_TOMATO, pw - 32, AL_LEFT);
     D_rect(px + 16, 172, pw - 32, 2, C_TOMATO); D_rect(px + 16, 174, pw - 32, 2, C_MUSTARD);
     int cx = px + 16, cy = 188, n = 0;
     for (int i = 0; i < CH_N && cy < 300; i++) {
@@ -2353,13 +2349,13 @@ static void draw_custom(void) {
     D_round(px + 16, 330, 90, 50, 8, C_SURFACE); D_rect(px + 16, 374, 50, 4, C_TOMATO);
     D_round(px + 116, 330, 90, 50, 8, C_SURFACE); D_roundRing(px + 114, 328, 94, 54, 9, 3, C_MUSTARD);
     D_round(px + 216, 330, 90, 50, 8, C_SURFACE);
-    const char *tip = A.custSel == 0 ? "Trái / Phải đổi màu · xem ngay" : A.custSel == 1 ? "A gõ tên mới · X trả về mặc định" :
-                      A.custSel < 2 + CH_N ? "A hiện/ẩn (tab từ khóa: A sửa, X xóa) · L1/R1 hoặc Trái/Phải di chuyển · Y thứ tự mặc định" : "A hiện / ẩn biểu tượng này";
+    const char *tip = A.custSel == 0 ? "Trái / Phải đổi màu · xem ngay" :
+                      A.custSel < 1 + CH_N ? "A hiện/ẩn (tab từ khóa: A sửa, X xóa) · L1/R1 hoặc Trái/Phải di chuyển · Y thứ tự mặc định" : "A hiện / ẩn biểu tượng này";
     D_textBox(F_REG, 16, tip, px, 410, pw, 4, 22, C_MUTED);
     D_rect(0, 716, SCREEN_W, 52, C_BAR);
     int x = 24;
-    x += D_hint(x, 728, KN(K_A), A.custSel == 1 ? "Sửa tên" : "Đổi") + 20;
-    if (A.custSel >= 2 && A.custSel < 2 + CH_N) { x += D_hint(x, 728, KN(K_L1), "Lên") + 12; x += D_hint(x, 728, KN(K_R1), "Xuống") + 20; }
+    x += D_hint(x, 728, KN(K_A), "Đổi") + 20;
+    if (A.custSel >= 1 && A.custSel < 1 + CH_N) { x += D_hint(x, 728, KN(K_L1), "Lên") + 12; x += D_hint(x, 728, KN(K_R1), "Xuống") + 20; }
     D_hint(x, 728, KN(K_B), "Xong");
 }
 static void group_summary(int g, char *out, size_t n) {
@@ -2375,7 +2371,7 @@ static void group_summary(int g, char *out, size_t n) {
             const char *code = S.sub_lang[0] ? S.sub_lang : S.lang ? "en" : "vi", *name = code;
             for (int k = 0; k < SUB_NLANGS; k++) if (!strcmp(SUB_LANGS[k].code, code)) name = T(SUB_LANGS[k].name);
             snprintf(out, n, "%s · %s · %s", T(m[S.sub_mode]), name, T(z[S.sub_size])); break; }
-        case G_UI: snprintf(out, n, "%s · %s%s%s", S.lang ? "English" : "Tiếng Việt", T(D_themeName(S.theme)), S.app_title[0] ? " · " : "", S.app_title); break;
+        case G_UI: snprintf(out, n, "%s · %s", S.lang ? "English" : "Tiếng Việt", T(D_themeName(S.theme))); break;
         case G_STORAGE: snprintf(out, n, T("%d mục đã tải · thư mục %s"), Store_downloads()->count, Export_dir()); break;
         case G_SYSTEM: snprintf(out, n, T("Tiết kiệm pin: %s%s"), T(onoff[S.saver]), ss.battery >= 0 ? "" : ""); if (ss.battery >= 0) snprintf(out + strlen(out), n - strlen(out), T(" · pin %d%%"), ss.battery); break;
         case G_KIDS: snprintf(out, n, "%s", K.enabled ? T("Đang bật") : T("Tắt")); break;

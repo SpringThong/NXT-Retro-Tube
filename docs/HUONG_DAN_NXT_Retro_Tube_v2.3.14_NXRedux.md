@@ -1,9 +1,12 @@
-# NXT Retro Tube 2.3.13 — NX Redux (TrimUI Brick Pro)
+# NXT Retro Tube 2.3.14 — NX Redux (TrimUI Brick Pro)
 
 ## Cài đặt
 Chép thư mục `Tools/NXT Retro Tube.pak` vào `Tools/` trên thẻ nhớ (chép đè nếu đã có bản cũ). Mở từ Tools.
 
 Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/shared/nxt-retro-tube`.
+
+## Mới ở 2.3.14
+- Bỏ mục **Tên ứng dụng** trong Tùy biến: góc trên luôn là logo NXT Tube gốc (tên đã đặt ở bản thử trước không còn dùng).
 
 ## Mới ở 2.3.13
 - **Cài đặt gom thành 9 mục**, mỗi mục có biểu tượng và một dòng tóm tắt đang chọn gì:
@@ -28,7 +31,6 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm �
 
 **Giao diện (Cài đặt → Màu giao diện, Cài đặt → Tùy biến giao diện)**
 - 6 bộ màu: Retro cam, YouTube đỏ, Đại dương, Rừng xanh, Neon hồng, Đen tuyền.
-- Đặt **tên ứng dụng** riêng ở góc trên.
 - **Tab trang chủ:** ẩn/hiện (A), đổi thứ tự (L1/R1 hoặc Trái/Phải), Y = thứ tự mặc định; thêm tối đa **4 tab từ khóa của bạn** (A gõ từ khóa, X xóa).
 - Ẩn/hiện từng biểu tượng trên thanh trạng thái (pin, Wi-Fi, Bluetooth, đồng hồ, DAC).
 

@@ -1,6 +1,6 @@
 {
   "name": "NXT Retro Tube",
-  "version": "2.3.13",
+  "version": "2.3.14",
   "package": "vn.nguyenxuanthong.nxtretrotube",
   "rom": "nxredux",
   "device": "trimui-brick-pro",
