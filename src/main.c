@@ -3342,8 +3342,7 @@ static void draw_lounge(void) {
     } else if (A.loungeState < 0) {
         D_textBox(F_SEMI, 20, A.loungeMsg, x + 40, y + 110, w - 80, 3, 28, C_TOMATO);
     } else D_text(F_SEMI, 22, "Đang lấy mã…", x + w / 2, y + 150, C_MUTED, 0, AL_CENTER);
-    D_textBox(F_REG, 18, "Trên điện thoại: mở app YouTube › ảnh đại diện › Cài đặt › Xem trên TV › Liên kết bằng mã TV › nhập mã này. "
-              "Sau đó bấm nút truyền (cast) trong video và chọn “NXT Retro Tube”. Lần sau chỉ cần bấm nút truyền, không cần mã nữa.",
+    D_textBox(F_REG, 18, "Android: app YouTube › ảnh đại diện › Cài đặt › Xem trên TV › Liên kết bằng mã TV. iPhone: bấm nút truyền (cast) ở đầu app › Liên kết bằng mã TV (Add a device). Nhập mã này, rồi chọn “NXT Retro Tube”. Lần sau chỉ cần bấm nút truyền.",
               x + 40, y + 236, w - 80, 5, 26, C_INK);
     char who[64]; int nr = Lounge_remotes(who, sizeof(who));
     char st[160]; if (nr) snprintf(st, sizeof(st), T("Đã kết nối: %s"), who[0] ? who : T("điện thoại")); else snprintf(st, sizeof(st), "%s", T("Chưa có điện thoại nào kết nối"));
