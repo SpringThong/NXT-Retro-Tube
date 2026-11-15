@@ -1,9 +1,14 @@
-# NXT Retro Tube 2.3.12 — NX Redux (TrimUI Brick Pro)
+# NXT Retro Tube 2.3.13 — NX Redux (TrimUI Brick Pro)
 
 ## Cài đặt
 Chép thư mục `Tools/NXT Retro Tube.pak` vào `Tools/` trên thẻ nhớ (chép đè nếu đã có bản cũ). Mở từ Tools.
 
 Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/shared/nxt-retro-tube`.
+
+## Mới ở 2.3.13
+- **Cài đặt gom thành 9 mục**, mỗi mục có biểu tượng và một dòng tóm tắt đang chọn gì:
+  Tài khoản & kênh · Phát video · Âm thanh · Phụ đề · Giao diện · Tải về & bộ nhớ · Pin, phím & hệ thống · Chế độ trẻ em · Cập nhật & giới thiệu.
+  A mở mục, B quay lại danh sách mục, L1/R1 sang mục bên cạnh. Có bản cập nhật thì mục "Cập nhật & giới thiệu" có chấm vàng.
 
 ## Mới ở 2.3.12
 - **Ảnh nhỏ khi tua quay lại, gọn hơn** cho màn nhỏ (Brick Pro, Smart Pro S, R36S): 176×99 khi xem toàn màn hình, 136×77 trong khung video

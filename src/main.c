@@ -123,6 +123,27 @@ enum { SET_LANG, SET_THEME, SET_QUALITY, SET_AUTOPLAY, SET_PREFETCH, SET_SAVER, 
 #else
 #define SET_ROWS SET_ICON
 #endif
+/* Cài đặt: groups of rows (2.3.13) */
+enum { G_ACCOUNT, G_PLAY, G_AUDIO, G_SUBS, G_UI, G_STORAGE, G_SYSTEM, G_KIDS, G_ABOUT, G_N };
+static const char *GROUP_LABEL[G_N] = {"Tài khoản & kênh", "Phát video", "Âm thanh", "Phụ đề", "Giao diện", "Tải về & bộ nhớ", "Pin, phím & hệ thống", "Chế độ trẻ em", "Cập nhật & giới thiệu"};
+static const char *GROUP_ICON[G_N] = {"users", "play", "headphones", "captions", "sliders-horizontal", "download", "gauge", "house", "thumbs-up"};
+static const int GROUP_ROWS[G_N][8] = {
+    {SET_ACCOUNT, SET_IMPORT, SET_NEWBADGE, SET_AUTODL, -1},
+    {SET_QUALITY, SET_AUTOPLAY, SET_PREFETCH, SET_FPS60, SET_SPONSOR, SET_SLEEP_ACT, -1},
+    {SET_AUDIO, SET_BOTTOM, SET_BOOST, SET_VOICE, SET_AVSYNC, -1},
+    {SET_SUBS, SET_SUBLANG, SET_SUBSIZE, -1},
+    {SET_LANG, SET_THEME, SET_CUSTOM, SET_HOME, SET_TELEX, -1},
+    {SET_EXPORT, SET_CACHE, SET_HISTORY, SET_SEARCHES, -1},
+    {SET_SAVER, SET_KEYS, SET_ICON, -1},
+    {SET_KIDS, -1},
+    {SET_UPDATE, SET_OTA_AUTO, SET_VERSION, SET_ABOUT, -1},
+};
+static int group_rows(int g, int *ids) {
+    int n = 0;
+    for (int i = 0; i < 8 && GROUP_ROWS[g][i] >= 0; i++) { if (GROUP_ROWS[g][i] >= SET_ROWS) continue; ids[n++] = GROUP_ROWS[g][i]; }
+    return n;
+}
+static bool row_cyclic(int id) { return id <= SET_HOME; }
 
 static struct {
     SDL_Window *win; SDL_Renderer *ren; SDL_Joystick *joy;
@@ -144,6 +165,7 @@ static struct {
     /* settings */
     bool loginPanel; int loginState, loginSecs; char loginCode[32], loginUrl[160], loginMsg[200];
     bool custPage; int custSel; float custScroll; int textFor;   /* textFor: keyboard types 1 the app title, 2..5 a keyword tab */
+    int setGroup, groupSel;   /* settings: -1 = the list of groups, else inside that group */
     int setSel; float setScroll; bool keyPage; int keySelRow; int capture; Uint32 captureUntil; int confirmRow; Uint32 confirmUntil;
     char iconStatus[160]; int iconState;
     /* playback */
@@ -821,6 +843,7 @@ static void go_section(int s) {
             if (K.enabled && !A.settingsUnlocked) { pin_open(PIN_SETTINGS); break; }
             A.screen = SC_SETTINGS; A.keyPage = false; A.custPage = false; A.capture = -1; icon_state(); break;
     }
+    (void)0;
     if ((s + 5) % 5 != 4) A.settingsUnlocked = false;
 }
 static void grid_move(Key k, int *sel, int count, int *focus_out_up, int *focus_out_down) {
@@ -1393,12 +1416,30 @@ static void settings_key(Key k) {
         else if (k == K_B) A.keyPage = false;
         return;
     }
+    if (A.setGroup < 0) {   /* the list of groups */
+        if (k == K_UP && A.groupSel > 0) A.groupSel--;
+        else if (k == K_DOWN && A.groupSel < G_N - 1) A.groupSel++;
+        else if (k == K_A || k == K_RIGHT) {
+            if (A.groupSel == G_KIDS) { setting_action(SET_KIDS); return; }   /* parents' page (asks for the PIN) */
+            A.setGroup = A.groupSel; A.setSel = 0; A.setScroll = 0;
+        }
+        else if (k == K_B) { A.screen = SC_HOME; A.focus = 0; A.settingsUnlocked = false; }
+        return;
+    }
+    int ids[8], n = group_rows(A.setGroup, ids);
+    if (A.setSel >= n) A.setSel = n ? n - 1 : 0;
+    int id = n ? ids[A.setSel] : -1;
     if (k == K_UP && A.setSel > 0) A.setSel--;
-    else if (k == K_DOWN && A.setSel < SET_ROWS - 1) A.setSel++;
-    else if (k == K_LEFT) setting_change(A.setSel, -1);
-    else if (k == K_RIGHT) setting_change(A.setSel, 1);
-    else if (k == K_A) setting_action(A.setSel);
-    else if (k == K_B) { A.screen = SC_HOME; A.focus = 0; A.settingsUnlocked = false; }
+    else if (k == K_DOWN && A.setSel < n - 1) A.setSel++;
+    else if (k == K_LEFT && id >= 0) setting_change(id, -1);
+    else if (k == K_RIGHT && id >= 0) setting_change(id, 1);
+    else if (k == K_A && id >= 0) setting_action(id);
+    else if (k == K_L1 || k == K_R1) {   /* next / previous group without going back */
+        int g = A.setGroup;
+        do g = (g + (k == K_R1 ? 1 : G_N - 1)) % G_N; while (g == G_KIDS);
+        A.setGroup = A.groupSel = g; A.setSel = 0; A.setScroll = 0;
+    }
+    else if (k == K_B) { A.groupSel = A.setGroup; A.setGroup = -1; }
 }
 
 /* ---------- volume, screen off, quick panel ---------- */
@@ -2321,6 +2362,65 @@ static void draw_custom(void) {
     if (A.custSel >= 2 && A.custSel < 2 + CH_N) { x += D_hint(x, 728, KN(K_L1), "Lên") + 12; x += D_hint(x, 728, KN(K_R1), "Xuống") + 20; }
     D_hint(x, 728, KN(K_B), "Xong");
 }
+static void group_summary(int g, char *out, size_t n) {
+    static const char *onoff[2] = {"tắt", "bật"};
+    SysStatus ss; Sys_status(&ss);
+    switch (g) {
+        case G_ACCOUNT: snprintf(out, n, T("%s · %d kênh theo dõi"), Account_signedIn() ? (Account_name()[0] ? Account_name() : T("Đã đăng nhập")) : T("Chưa đăng nhập"), Store_channels()->count); break;
+        case G_PLAY: { static const char *sp[3] = {"tắt", "tự bỏ qua", "chỉ báo"};
+            snprintf(out, n, T("%s · Tự phát tiếp: %s · Bỏ QC: %s"), T(QUALITY_LABEL[A.quality]), T(onoff[S.autoplay]), T(sp[S.sponsor])); break; }
+        case G_AUDIO: { static const char *m[3] = {"Tự động", "Loa / tai nghe", "DAC USB"};
+            snprintf(out, n, T("%s · %d%% · Giọng rõ: %s"), T(m[S.audio_out]), 100 + 50 * S.boost, T(onoff[S.voice])); break; }
+        case G_SUBS: { static const char *m[3] = {"Tự động", "Luôn bật", "Tắt"}, *z[3] = {"Nhỏ", "Vừa", "Lớn"};
+            const char *code = S.sub_lang[0] ? S.sub_lang : S.lang ? "en" : "vi", *name = code;
+            for (int k = 0; k < SUB_NLANGS; k++) if (!strcmp(SUB_LANGS[k].code, code)) name = T(SUB_LANGS[k].name);
+            snprintf(out, n, "%s · %s · %s", T(m[S.sub_mode]), name, T(z[S.sub_size])); break; }
+        case G_UI: snprintf(out, n, "%s · %s%s%s", S.lang ? "English" : "Tiếng Việt", T(D_themeName(S.theme)), S.app_title[0] ? " · " : "", S.app_title); break;
+        case G_STORAGE: snprintf(out, n, T("%d mục đã tải · thư mục %s"), Store_downloads()->count, Export_dir()); break;
+        case G_SYSTEM: snprintf(out, n, T("Tiết kiệm pin: %s%s"), T(onoff[S.saver]), ss.battery >= 0 ? "" : ""); if (ss.battery >= 0) snprintf(out + strlen(out), n - strlen(out), T(" · pin %d%%"), ss.battery); break;
+        case G_KIDS: snprintf(out, n, "%s", K.enabled ? T("Đang bật") : T("Tắt")); break;
+        case G_ABOUT: {
+            int st = Ota_state();
+            if (st == OTA_AVAILABLE) snprintf(out, n, T("Có bản %s · bấm để cập nhật"), Ota_latest());
+            else if (st == OTA_READY) snprintf(out, n, "%s", T("Đã tải bản mới · khởi động lại"));
+            else snprintf(out, n, "NXT Retro Tube %s · %s", APP_VERSION, APP_AUTHOR);
+            break; }
+    }
+}
+static void draw_groups(void) {
+    int rowh = 66, top = 96;
+    int gx = SCREEN_W - 712 > 300 ? 688 : 688;
+    for (int g = 0; g < G_N; g++) {
+        int y = top + g * rowh;
+        bool on = g == A.groupSel;
+        if (on) D_round(27, y + 3, gx - 48, 58, 10, C_BLACK);
+        D_round(24, y, gx - 48, 58, 10, on ? C_INK : C_SURFACE);
+        D_icon(GROUP_ICON[g], 40, y + 15, 28, on ? C_DARK : C_MUSTARD);
+        D_text(F_SEMI, 20, GROUP_LABEL[g], 82, y + 6, on ? C_DARK : C_INK, gx - 160, AL_LEFT);
+        char sum[300]; group_summary(g, sum, sizeof(sum));
+        D_text(F_REG, 15, sum, 82, y + 33, on ? C_LINE : C_MUTED, gx - 160, AL_LEFT);
+        if (g == G_ABOUT && (Ota_state() == OTA_AVAILABLE || Ota_state() == OTA_READY)) D_circle(gx - 50, y + 29, 7, C_MUSTARD);
+        D_tri(gx - 38, y + 22, gx - 38, y + 36, gx - 31, y + 29, on ? C_DARK : C_DIM);
+    }
+    /* right card: what is inside the chosen group */
+    int cw = SCREEN_W - gx - 24;
+    D_shadow(gx, 96, cw, 400, 14, 6); D_round(gx, 96, cw, 400, 14, C_SURFACE); D_roundRing(gx, 96, cw, 400, 14, 2, C_BLACK);
+    D_icon(GROUP_ICON[A.groupSel], gx + 20, 116, 30, C_MUSTARD);
+    D_text(F_BOLD, 22, GROUP_LABEL[A.groupSel], gx + 62, 118, C_INK, cw - 80, AL_LEFT);
+    if (A.groupSel == G_KIDS) D_textBox(F_REG, 17, "Phụ huynh: mã PIN, giới hạn thời gian, khung giờ, nhắc nghỉ mắt, kênh được duyệt, từ khóa cấm, báo cáo xem", gx + 20, 168, cw - 40, 6, 24, C_MUTED);
+    else {
+        int ids[8], n = group_rows(A.groupSel, ids);
+        for (int r = 0; r < n; r++) {
+            char label[160], value[96], note[300];
+            setting_text(ids[r], label, sizeof(label), value, sizeof(value), note, sizeof(note));
+            int y = 168 + r * 38;
+            D_text(F_REG, 17, label, gx + 20, y, C_MUTED, cw - 40 - 120, AL_LEFT);
+            D_text(F_BOLD, 16, value, gx + cw - 20, y + 1, C_INK, 120, AL_RIGHT);
+        }
+    }
+    D_textBox(F_REG, 16, "A mở mục · trong mục: L1/R1 sang mục khác, B quay lại", gx, 512, cw, 2, 22, C_DIM);
+    draw_nav(4, -1);
+}
 static void draw_settings(void) {
     D_rect(0, 0, SCREEN_W, SCREEN_H, C_BG);
     const char *ttl = A.custPage ? "Tùy biến giao diện" : A.keyPage ? "Đổi phím" : "Cài đặt";
@@ -2347,21 +2447,27 @@ static void draw_settings(void) {
         x += D_hint(x, 728, KN(K_A), "Gán nút mới") + 20; x += D_hint(x, 728, KN(K_Y), "Đổi chỗ A / B") + 20; x += D_hint(x, 728, KN(K_X), "Mặc định") + 20; D_hint(x, 728, KN(K_B), "Xong");
         return;
     }
-    int rowh = 60, top = 96, vis = 9;
+    if (A.setGroup < 0) { draw_groups(); return; }
+    int ids[8], nids = group_rows(A.setGroup, ids);
+    if (A.setSel >= nids) A.setSel = nids ? nids - 1 : 0;
+    int rowh = 60, top = 96 + 40, vis = 9;
+    D_icon(GROUP_ICON[A.setGroup], 24, 100, 26, C_MUSTARD);
+    D_text(F_BOLD, 20, GROUP_LABEL[A.setGroup], 60, 101, C_MUSTARD, 560, AL_LEFT);
     float target = A.setSel > vis - 3 ? (A.setSel - (vis - 3)) * rowh : 0;
     A.setScroll += (target - A.setScroll) * 0.35f;
     SDL_RenderSetClipRect(A.ren, &(SDL_Rect){0, top - 6, SCREEN_W, vis * rowh + 6});
-    for (int i = 0; i < SET_ROWS; i++) {
-        int y = top + i * rowh - (int)A.setScroll;
+    for (int r = 0; r < nids; r++) {
+        int i = ids[r];
+        int y = top + r * rowh - (int)A.setScroll;
         if (y < top - rowh || y > top + vis * rowh) continue;
         char label[160], value[96], note[300];
         setting_text(i, label, sizeof(label), value, sizeof(value), note, sizeof(note));
-        bool on = i == A.setSel;
+        bool on = r == A.setSel;
         if (on) D_round(27, y + 3, 640, 52, 10, C_BLACK);
         D_round(24, y, 640, 52, 10, on ? C_INK : C_SURFACE);
         D_text(F_SEMI, 20, label, 42, y + 14, on ? C_DARK : C_INK, 400, AL_LEFT);
         int vw = D_textW(F_BOLD, 18, value) + 24;
-        bool cyclic = i <= SET_HOME;
+        bool cyclic = row_cyclic(i);
         D_round(648 - vw, y + 10, vw, 32, 8, on ? C_MUSTARD : C_RAISED);
         D_text(F_BOLD, 18, value, 648 - vw / 2, y + 15, on ? C_DARK : C_INK, 0, AL_CENTER);
         if (on && cyclic) { D_tri(648 - vw - 18, y + 26, 648 - vw - 10, y + 20, 648 - vw - 10, y + 32, C_DARK); }
@@ -2369,13 +2475,15 @@ static void draw_settings(void) {
     SDL_RenderSetClipRect(A.ren, NULL);
     /* detail card */
     char label[160], value[96], note[300];
-    setting_text(A.setSel, label, sizeof(label), value, sizeof(value), note, sizeof(note));
+    int cur = nids ? ids[A.setSel] : 0;
+    setting_text(cur, label, sizeof(label), value, sizeof(value), note, sizeof(note));
     D_shadow(688, 96, SCREEN_W - 712, 300, 14, 6); D_round(688, 96, SCREEN_W - 712, 300, 14, C_SURFACE); D_roundRing(688, 96, SCREEN_W - 712, 300, 14, 2, C_BLACK);
     D_icon("settings", 708, 116, 30, C_MUSTARD);
     D_textBox(F_BOLD, 22, label, 708, 156, SCREEN_W - 752, 2, 28, C_INK);
     D_text(F_PIXEL, 30, value, 708, 214, C_MUSTARD, SCREEN_W - 752, AL_LEFT);
     D_textBox(F_REG, 17, note, 708, 258, SCREEN_W - 752, 5, 24, C_MUTED);
-    D_textBox(F_REG, 16, A.setSel <= SET_HOME ? "Trái / Phải để đổi giá trị" : "A để thực hiện", 708, 416, SCREEN_W - 734, 2, 22, C_DIM);
+    D_textBox(F_REG, 16, row_cyclic(cur) ? "Trái / Phải để đổi giá trị" : "A để thực hiện", 708, 416, SCREEN_W - 734, 2, 22, C_DIM);
+    { char l1r1[16]; snprintf(l1r1, sizeof(l1r1), "%s %s", KN(K_L1), KN(K_R1)); int hx = 708; hx += D_hint(hx, 470, l1r1, "Mục khác") + 16; D_hint(hx, 470, KN(K_B), "Danh sách mục"); }
     draw_nav(4, -1);
 }
 
@@ -2800,7 +2908,7 @@ static void pin_submit(void) {
     if (!Kids_checkPin(A.pin)) { A.pinErrUntil = SDL_GetTicks() + 1500; memcpy(A.pin, "0000", 5); A.pinPos = 0; return; }
     A.pinFor = PIN_NONE;
     switch (purpose) {
-        case PIN_SETTINGS: A.settingsUnlocked = true; A.screen = SC_SETTINGS; A.keyPage = false; A.capture = -1; icon_state(); break;
+        case PIN_SETTINGS: A.settingsUnlocked = true; A.screen = SC_SETTINGS; A.keyPage = false; A.custPage = false; A.capture = -1; icon_state(); break;
         case PIN_QUIT: A.quit = true; break;
         case PIN_EXTEND: Kids_grantExtra(15); A.kidsLock = 0; kids_resume(); toast("Đã cho xem thêm 15 phút"); break;
         case PIN_HOURS: Kids_waiveHoursToday(); A.kidsLock = 0; kids_resume(); toast("Hôm nay được xem ngoài khung giờ"); break;
@@ -3622,7 +3730,7 @@ int main(int argc, char **argv) {
     Store_init();
     Account_init();
     for (int i = 0; i < NQ; i++) if (!strcmp(QUALITY_ID[i], Store_quality())) A.quality = i;
-    A.speedIx = 2; A.capture = -1; A.confirmRow = -1;
+    A.speedIx = 2; A.capture = -1; A.confirmRow = -1; A.setGroup = -1;
     A.telexOff = !S.telex;
     if (S.bottom_dac) { AudioRoute_setBottom(true); A.bottomSwitched = true; SDL_Delay(400); }
     Sys_init();
