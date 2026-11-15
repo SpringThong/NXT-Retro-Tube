@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define APP_NAME "NXT Retro Tube"
-#define APP_VERSION "2.3.14"
+#define APP_VERSION "2.4"
 /* scanout.c: direct panel output (Smart Pro S, when SDL cannot open the panel) */
 bool Scanout_open(int *lw, int *lh);
 SDL_Surface *Scanout_surface(void);

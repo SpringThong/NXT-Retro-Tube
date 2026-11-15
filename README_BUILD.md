@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.3.14 — mã nguồn
+# NXT Retro Tube 2.4 — mã nguồn
 
 **Tác giả:** Nguyễn Xuân Thông
 **Ủng hộ tác giả:** MoMo 0339838267 · Vietcombank (VCB) 0581000786219 · PayPal thongkhung2@gmail.com
@@ -37,14 +37,16 @@ Mã ROM chọn lúc biên dịch: `-DNXT_TUBE_ROM_NXREDUX | NEXTUI | STOCK | MUO
 - Lọc: `Kids_allowed()` áp vào trang chủ, kết quả tìm, trang kênh, hàng "Tiếp theo" và khi mở video; từ khóa so khớp sau khi bỏ dấu tiếng Việt.
 - Giao diện trong `src/main.c`: trang Cài đặt → Chế độ trẻ em (`SC_KIDS`), hộp nhập PIN, màn khóa hết giờ / ngoài giờ, màn nghỉ mắt.
 
-## Mới ở 2.3.11 (thử nghiệm)
+## Mới ở 2.4 (gộp các bản thử 2.3.9 – 2.3.14)
+
+### 2.3.11
 - `draw.c`: chữ Hàn/Nhật/Trung/Thái trong `D_text`/`D_textW` vẽ theo từng đoạn chữ (`split_runs`, `render_runs`) bằng gói phông Noto của phụ đề; tự tải gói khi cần (`want_pack`), xóa bộ nhớ chữ khi gói tải xong. `subs.c`: bộ đệm tải riêng cho mỗi gói (trước đây dùng chung nên tải hai gói cùng lúc bị sai checksum), `Subs_packReady` chỉ xem thẻ nhớ mỗi 3 giây.
 - `account.c`: nhận cả `reloadContinuationData`, đi tiếp tới 4 trang không có video mới, ghi log lý do dừng. `main.c`: `Feed.fallback` — hết feed tài khoản thì nối gợi ý của app.
 - (2.3.14) Bỏ tên ứng dụng tùy chọn (`S.app_title` không còn được dùng).
 - (2.3.13) Cài đặt theo nhóm: `GROUP_ROWS`, `A.setGroup` (-1 = danh sách mục), `draw_groups()`, `group_summary()`.
 - (2.3.12) Ảnh storyboard khi tua bật lại, cỡ 176×99 / 136×77 (`draw_progress`).
 
-## Mới ở 2.3.10 (thử nghiệm, nhánh thu-nghiem-2.4)
+### 2.3.10
 - Hàng tab trang chủ là danh mục `CH_*` (`chips_build()`, `S.chip_order`/`chip_hidden`/`custom_chip`), tab "Xem tiếp" = `@yt:FEhistory` (đăng nhập) hoặc `@local:continue`.
   `account.c` đọc vạch đã xem (`percentDurationWatched` / `startPercent`) → `VideoItem.watched`, `Account_resumeSeconds()`; `resume_at()` trong `main.c`.
 - Màu giao diện chạy lúc chạy (`g_pal[]`, `D_setTheme`), trang Tùy biến (`draw_custom`, `cust_key`), bàn phím dùng chung cho tên app / tab từ khóa / tên danh sách (`A.textFor`).
@@ -54,7 +56,7 @@ Mã ROM chọn lúc biên dịch: `-DNXT_TUBE_ROM_NXREDUX | NEXTUI | STOCK | MUO
 - `player.c`: `Player_setBoost()` (tăng âm lượng có soft-limit, lọc giọng nói 2.8 kHz + cắt trầm 110 Hz) trong callback âm thanh.
 - Danh sách phát cục bộ `PL_*` trong `store.c` (`playlists.json`), báo video mới / tự tải khi sạc (`newvideo_tick`, `channel-news.json`), bộ lọc tìm kiếm (`search_q` → `@sp:<params>|từ khóa`).
 
-## Mới ở 2.3.9
+### 2.3.9
 - `src/account.c`: đăng nhập thiết bị YouTube TV (`/o/oauth2/device/code`, `/o/oauth2/token`, refresh), client id/secret lấy từ base.js của youtube.com/tv nếu cái có sẵn bị từ chối; feed qua client TVHTML5 có Bearer (`FEwhat_to_watch`, `FEsubscriptions`), bộ đọc tile TV + lockupViewModel + videoRenderer; truy vấn `@yt:<browseId>` trong job tìm kiếm (không bao giờ chuyển cho yt-dlp). QR: `src/qrcodegen.c` (Nayuki, MIT).
 - `D_badge`: màu theo nút.
 - QA: server giả có `/o/oauth2/*`, `accounts_list`, `browse` dạng TV.
@@ -150,7 +152,7 @@ Mã ROM chọn lúc biên dịch: `-DNXT_TUBE_ROM_NXREDUX | NEXTUI | STOCK | MUO
 ```sh
 TOOLCHAIN=/path/to/compiler ./build.sh          # cả bảy bản -> build/<rom>/nxt-retro-tube.elf
 ROM=stock TOOLCHAIN=/path/to/compiler ./build.sh # một ROM
-RUNTIME=./runtime ./package.sh                   # dist/NXT_Retro_Tube_v2.3.9_{NXRedux,NextUI,Stock,Stock_SmartProS,muOS,Knulli,dArkOS_R36S}.zip + dist/ota-*.zip
+RUNTIME=./runtime ./package.sh                   # dist/NXT_Retro_Tube_v2.4_{NXRedux,NextUI,Stock,Stock_SmartProS,muOS,Knulli,dArkOS_R36S}.zip + dist/ota-*.zip
 ```
 Bảy tệp `.elf` dựng từ mã nguồn này (với `SOURCE_DATE_EPOCH=1793034000`) trùng từng byte với bản phát hành 2.1.
 

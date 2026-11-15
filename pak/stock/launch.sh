@@ -1,5 +1,5 @@
 #!/bin/sh
-# NXT Retro Tube 2.3.9 — by Nguyễn Xuân Thông — official TrimUI firmware (Stock), TrimUI Brick / Brick Pro
+# NXT Retro Tube 2.4 — by Nguyễn Xuân Thông — official TrimUI firmware (Stock), TrimUI Brick / Brick Pro
 DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)" || exit 1
 cd "$DIR" || exit 1
 STOCK_DATA="/mnt/SDCARD/.userdata/nxt-tube-stock"

@@ -1,75 +1,46 @@
-# NXT Retro Tube 2.3.14 — NX Redux (TrimUI Brick Pro)
+# NXT Retro Tube 2.4 — NextUI (TrimUI Brick / Brick Pro)
 
 ## Cài đặt
-Chép thư mục `Tools/NXT Retro Tube.pak` vào `Tools/` trên thẻ nhớ (chép đè nếu đã có bản cũ). Mở từ Tools.
+Chép thư mục `Tools/tg5040/NXT Retro Tube.pak` vào `Tools/tg5040/` trên thẻ nhớ. Mở từ Tools.
+
+Trên NextUI, launcher không có icon riêng cho Tools nên app hiện theo tên (không thay launcher).
 
 Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/shared/nxt-retro-tube`.
 
-## Mới ở 2.3.14
-- Bỏ mục **Tên ứng dụng** trong Tùy biến: góc trên luôn là logo NXT Tube gốc (tên đã đặt ở bản thử trước không còn dùng).
+## Mới ở 2.4
+**Tài khoản Google & xem tiếp**
+- **Đăng nhập Google** (Cài đặt → Tài khoản & kênh → Tài khoản Google): máy hiện mã + mã QR, trên điện thoại mở google.com/device, nhập mã, bấm Cho phép.
+  "Dành cho bạn" là trang đề xuất của chính bạn, tab **"Đăng ký"** là video mới của kênh bạn đăng ký. Nên dùng tài khoản phụ (đây là cách đăng nhập của app YouTube trên TV).
+- Tab **"Xem tiếp"**: video xem dở trên điện thoại / web / TV (khi đăng nhập) hoặc trên máy này; mở là phát tiếp đúng chỗ.
+- "Dành cho bạn" / "Đăng ký" cuộn không dừng: hết trang của tài khoản thì nối tiếp gợi ý của app.
 
-## Mới ở 2.3.13
-- **Cài đặt gom thành 9 mục**, mỗi mục có biểu tượng và một dòng tóm tắt đang chọn gì:
-  Tài khoản & kênh · Phát video · Âm thanh · Phụ đề · Giao diện · Tải về & bộ nhớ · Pin, phím & hệ thống · Chế độ trẻ em · Cập nhật & giới thiệu.
-  A mở mục, B quay lại danh sách mục, L1/R1 sang mục bên cạnh. Có bản cập nhật thì mục "Cập nhật & giới thiệu" có chấm vàng.
+**Cài đặt gọn thành 9 mục**: Tài khoản & kênh · Phát video · Âm thanh · Phụ đề · Giao diện · Tải về & bộ nhớ · Pin, phím & hệ thống · Chế độ trẻ em · Cập nhật & giới thiệu.
+A mở mục, B quay lại, L1/R1 sang mục bên cạnh.
 
-## Mới ở 2.3.12
-- **Ảnh nhỏ khi tua quay lại, gọn hơn** cho màn nhỏ (Brick Pro, Smart Pro S, R36S): 176×99 khi xem toàn màn hình, 136×77 trong khung video
-  (gần đúng cỡ ảnh gốc của YouTube nên nét và nhẹ máy), kèm giờ và tên chương. Ảnh chỉ tải khi bạn đang tua.
+**Giao diện**
+- 6 bộ màu (Retro cam, YouTube đỏ, Đại dương, Rừng xanh, Neon hồng, Đen tuyền).
+- Tùy biến: ẩn / đổi thứ tự tab trang chủ, thêm tối đa 4 tab theo từ khóa, ẩn từng biểu tượng trên thanh trạng thái.
+- Nút gợi ý có màu (A đỏ, B vàng, X xanh dương, Y xanh lá).
+- Tên video tiếng **Hàn, Nhật, Trung, Thái** hiện đúng chữ (tự tải phông một lần khi gặp, cần Wi-Fi).
 
-## Mới ở 2.3.11 (sửa lỗi bản thử 2.3.10)
-- **Tên video tiếng Hàn, Nhật, Trung, Thái** hiện đúng chữ (trước đây ra ô vuông). Lần đầu gặp, app tự tải phông chữ của ngôn ngữ đó
-  một lần (Thái ~0,2 MB, Hàn ~10 MB, Nhật ~10 MB, Trung ~17 MB, cần Wi-Fi), tải xong tên tự hiện lại. Phần chữ Việt / Latinh trong tên vẫn dùng phông của app.
-- **Dành cho bạn / Đăng ký / Xem tiếp** cuộn được lâu hơn: app đi tiếp qua các trang YouTube trả về trùng hoặc toàn Shorts (tới 4 trang liền)
-  thay vì dừng; khi "Dành cho bạn" / "Đăng ký" của tài khoản thật sự hết, danh sách vẫn chạy tiếp bằng gợi ý của app
-  (theo từ khóa đã tìm, kênh đã xem; với "Đăng ký" là video mới của chính các kênh đó).
+**Tải về & file** (khi xem: SELECT → Tải về)
+- Video 720p (xem trong app) · Video + file MP4 · nhạc M4A · Opus · MP3 128 kbps.
+- File có tên dễ đọc ở thư mục **`NXT Tube`** gốc thẻ nhớ, mở được bằng máy tính / app khác. "Xuất video & nhạc đã tải" chép các bản đã tải trước đó.
 
-## Mới ở 2.3.10 (bản thử nghiệm cho 2.4)
-**Xem tiếp từ thiết bị khác**
-- Tab mới **"Xem tiếp"** ở Trang chủ. Đã đăng nhập Google: là lịch sử xem của tài khoản (điện thoại, web, TV), mỗi video có vạch đỏ chỗ đã xem tới.
-  Mở video là phát tiếp từ chỗ đó (lùi 3 giây), có thông báo "Xem tiếp từ …". Chưa đăng nhập: các video xem dở trên máy này.
+**Khi xem video** (SELECT → Tùy chọn video)
+- Bỏ qua đoạn tài trợ trong video (SponsorBlock: tự bỏ qua / chỉ báo / tắt), đoạn đánh dấu màu xanh lá trên thanh tua.
+- Chương: vạch chia trên thanh tua, bảng Chương để nhảy; ảnh nhỏ xem trước khi tua (gọn cho màn nhỏ).
+- Lặp 1 video / cả danh sách / ngẫu nhiên, lặp đoạn A–B.
+- Âm lượng tới 250% có chống vỡ tiếng, Giọng nói rõ; khóa phím khi bỏ túi (SELECT ×3 để mở).
+- Chế độ nghe nhạc: tắt hình, màn hình đĩa nhạc — mát máy, pin lâu. Tiết kiệm pin tự động khi pin dưới 20%.
 
-**Giao diện (Cài đặt → Màu giao diện, Cài đặt → Tùy biến giao diện)**
-- 6 bộ màu: Retro cam, YouTube đỏ, Đại dương, Rừng xanh, Neon hồng, Đen tuyền.
-- **Tab trang chủ:** ẩn/hiện (A), đổi thứ tự (L1/R1 hoặc Trái/Phải), Y = thứ tự mặc định; thêm tối đa **4 tab từ khóa của bạn** (A gõ từ khóa, X xóa).
-- Ẩn/hiện từng biểu tượng trên thanh trạng thái (pin, Wi-Fi, Bluetooth, đồng hồ, DAC).
+**Danh sách phát, kênh, tìm kiếm**
+- "Yêu thích" + tối đa 7 danh sách phát của bạn (Thư viện).
+- Báo video mới của kênh theo dõi (2 giờ một lần khi có Wi-Fi); tùy chọn tự tải video mới khi đang sạc.
+- Bộ lọc tìm kiếm (SELECT ở kết quả): thời gian tải lên, thời lượng, sắp xếp, chỉ trực tiếp.
+- Nhập kênh từ Google Takeout (`subscriptions.csv` vào thư mục `NXT Tube`).
 
-**Tải về & file (SELECT → Tải về)**
-- Video 720p (xem trong app như trước) · **Video + lưu file MP4** · **Nhạc M4A** · **Nhạc Opus** · **Nhạc MP3 128 kbps**.
-- File có tên dễ đọc ("Tên video.mp4", ".m4a", ".opus", ".mp3", có tên kênh trong thẻ) nằm ở thư mục **`NXT Tube`** ngay gốc thẻ nhớ
-  (`/mnt/SDCARD/NXT Tube`) — mở được bằng máy tính, app nghe nhạc khác. MP3 được chuyển trên máy (bộ mã hóa shine), mất khoảng ⅓ thời lượng bài.
-- Cài đặt → **Xuất video & nhạc đã tải**: chép mọi thứ đã tải trước đó ra thư mục này.
-
-**Khi xem video (SELECT → Tùy chọn video, danh sách dài thì cuộn)**
-- **Bỏ qua quảng cáo trong video (SponsorBlock)**: Cài đặt → Tự bỏ qua / Chỉ báo / Tắt. Đoạn tài trợ hiện màu xanh lá trên thanh tua.
-- **Chương**: video có mốc thời gian trong mô tả có vạch chia trên thanh tua, tên chương khi tua, bảng **Chương** để nhảy.
-- **Lặp lại**: 1 video / cả danh sách / ngẫu nhiên. **Lặp đoạn A–B** (chọn 2 lần để đặt A rồi B).
-- **Âm lượng 100–250%** có chống vỡ tiếng, **Giọng nói rõ** (Cài đặt).
-- **Khóa phím** khi bỏ túi: bấm SELECT 3 lần để mở.
-- **Chế độ nghe nhạc**: tắt hình, màn hình đĩa nhạc với ảnh bìa, tên chương — mát máy, pin lâu.
-- **Tiết kiệm pin tự động** (Cài đặt, mặc định bật): pin dưới 20% và không cắm sạc thì tối đa 480p 30 hình, không lấy luồng trước.
-
-**Danh sách phát**
-- SELECT → **Thêm vào danh sách phát**: "Yêu thích" + tối đa 7 danh sách tự đặt tên. Xem ở Thư viện (các tab sau "Đã tải");
-  X bỏ video khỏi danh sách, START hai lần xóa danh sách.
-
-**Kênh & tìm kiếm**
-- **Báo video mới**: mỗi 2 giờ (có Wi-Fi) app xem kênh theo dõi có video mới không; tab Kênh hiện "· N mới", kênh có video mới ghi "N video mới".
-  Không kiểm tra khi đang xem video HD (đỡ nóng máy).
-- **Tự tải video mới khi sạc** (Cài đặt, mặc định tắt): đang cắm sạc + Wi-Fi thì tải video mới nhất của kênh theo dõi (480p, tối đa 5/ngày).
-- **Bộ lọc tìm kiếm**: ở kết quả tìm bấm SELECT — thời gian tải lên, thời lượng, sắp xếp (mới nhất, nhiều lượt xem…), chỉ video trực tiếp.
-- **Nhập kênh từ Google Takeout**: tải Takeout (YouTube → đăng ký) trên máy tính, chép `subscriptions.csv` vào thư mục `NXT Tube` trên thẻ,
-  rồi Cài đặt → Nhập kênh từ Google Takeout → A.
-
-## Mới ở 2.3.9 (bản thử nghiệm cho 2.4)
-- **Đăng nhập tài khoản Google:** Cài đặt → **Tài khoản Google** → A. Máy hiện mã và mã QR; trên điện thoại mở **google.com/device**
-  (hoặc quét mã QR), nhập mã, chọn tài khoản, bấm **Cho phép**. Máy không cần gõ mật khẩu.
-  Đăng nhập xong: Trang chủ **"Dành cho bạn"** là trang đề xuất YouTube của chính bạn, tab mới **"Đăng ký"** là video mới của các kênh bạn đăng ký.
-  Đăng xuất: cùng dòng đó, bấm A hai lần. Chưa đăng nhập thì tab "Đăng ký" hiện video mới của các kênh bạn theo dõi trong app.
-  Lưu ý: đây là cách đăng nhập của app YouTube trên TV, không phải cách Google chính thức cho app ngoài — có thể bị Google chặn; nên dùng tài khoản phụ.
-  Mã đăng nhập lưu ở `data/account.json` trên thẻ nhớ (ai có thẻ là dùng được tài khoản), đăng xuất sẽ xóa tệp này.
-- **Nút gợi ý có màu**: A đỏ, B vàng, X xanh dương, Y xanh lá; L/R xám; START/SELECT xám xanh; chữ cạnh nút sáng hơn.
-- Tab **"Bài hát cho bé"** trong chế độ trẻ em.
+**Cập nhật**: máy đang chạy bản 2.1 trở lên tự nhận bản 2.4 qua OTA (bản cũ: Cài đặt → Cập nhật; từ 2.4: Cài đặt → Cập nhật & giới thiệu → Cập nhật).
 
 ## Mới ở 2.3
 - **Giao diện full màn hình trên máy màn 16:9** (Smart Pro / Smart Pro S 1280×720, các máy 16:9 trên muOS / Knulli): trước đây giao diện
@@ -90,10 +61,6 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm �
   có mũi tên mờ ở mép cho biết còn tab phía trước / sau. Chế độ trẻ em có thêm tab "Vận động cho bé".
 - **Nút Home bên hông (NX Redux): sửa lỗi bấm 1 lần mà nhận 2 lần** (bảng OSD hiện rồi tắt ngay). App nhận ra trình phím của NX Redux
   (keymon.elf) tự mở bảng nên không gửi thêm yêu cầu mở nữa; một lần bấm chỉ tính một lần (cần thả nút và cách lần trước ít nhất 0,7 giây).
-- **Icon NXT Retro Tube trong menu Tools (NX Redux) cho mọi phiên bản NX Redux, cũ lẫn mới:** trước đây app chỉ có sẵn launcher sửa cho
-  NX Redux 2.1.2 và 2.4.1, nên lên bản hệ điều hành mới là mất icon. Giờ app **tự sửa chính launcher đang có trên máy** (thêm 2 dòng icon
-  NXT Retro Tube + NXT Retro Music vào bảng icon của nó), dù là phiên bản nào. Mỗi lần mở app sẽ tự kiểm tra: cập nhật NX Redux xong chỉ cần
-  mở NXT Retro Tube một lần rồi thoát ra là icon trở lại. Launcher gốc được sao lưu; Cài đặt → **Icon trong menu Tools** → A hai lần để gỡ (trả lại launcher gốc).
 
 ## Mới ở 2.1.3
 - Chỉ thay đổi cho Smart Pro S (máy khác giữ nguyên như 2.1.2).
@@ -153,18 +120,6 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm �
 | Xem video | A phát/dừng · Trái/Phải tua 10 giây · L2/R2 tua 60 giây · L1/R1 video trước/sau · X chất lượng · START tốc độ · SELECT tùy chọn · Y toàn màn hình · Xuống: hàng Tiếp theo · B về |
 | Hàng Tiếp theo | Trái/Phải chọn (không tua) · L2/R2 nhảy 4 video · A xem · Lên quay lại |
 | Tìm kiếm | A gõ (phím #+= mở ký hiệu, abc về chữ) · B xóa chữ / về · Y dấu cách · X xóa hết · SELECT Telex · START tìm · L1/R1 lượt tìm gần đây · L2/R2 đổi mục chính |
-
-## Icon trong menu Tools
-Launcher NX Redux gán icon cho Tools bằng danh sách cố định trong mã, nên app kèm launcher dựng lại từ đúng mã nguồn NX Redux,
-chỉ thêm hai dòng: "NXT Retro Tube" và "NXT Retro Music" (icon của cả hai app):
-- **NX Redux 2.4.1** (bản mới, kho `nx-redux/nx-handheld`, tag v2.4.1): nhận diện qua `.system/version.txt` = v2.4.1.
-- NX Redux 2.1.2 (bản cũ): nhận diện bằng mã SHA-256 của launcher gốc / launcher NXT Retro Music.
-
-App chỉ thay launcher khi đúng một trong hai phiên bản trên, sao lưu launcher cũ vào `integration/backup/`, và cài luôn
-`menu_icon_nxt_tube.png` (cùng `menu_icon_nxt.png` của NXT Retro Music nếu máy chưa có).
-Gỡ: Cài đặt → "Icon trong menu Tools" → bấm A hai lần. Sau lần mở app đầu tiên, khởi động lại máy để thấy icon.
-Khi NX Redux cập nhật lên bản mới hơn 2.4.1, launcher mới của NX Redux sẽ thay launcher này (icon mất, app vẫn chạy bình thường)
-cho tới khi có bản NXT Retro Tube hỗ trợ phiên bản đó.
 
 ## Chế độ trẻ em (phụ huynh quản lý)
 Vào **Cài đặt → Chế độ trẻ em**. Lần đầu bật sẽ yêu cầu đặt **mã PIN phụ huynh 4 số** (nhập 2 lần).

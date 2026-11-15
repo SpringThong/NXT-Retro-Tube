@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.3.9 — dArkOS (R36S và máy RK3326 cùng kiểu)
+# NXT Retro Tube 2.4 — dArkOS (R36S và máy RK3326 cùng kiểu)
 
 ## Yêu cầu
 - dArkOS trên R36S (và máy cùng bo mạch RG351MP / RK3326, tay cầm "GO-Super Gamepad"). Cần Wi-Fi (USB Wi-Fi trên R36S).
@@ -16,15 +16,40 @@ Nếu bạn để game ở thẻ thứ hai (`/roms2`) thì chép vào `ports` c�
 
 Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm trong `ports/nxt-retro-tube/data`.
 
-## Mới ở 2.3.9 (bản thử nghiệm cho 2.4)
-- **Đăng nhập tài khoản Google:** Cài đặt → **Tài khoản Google** → A. Máy hiện mã và mã QR; trên điện thoại mở **google.com/device**
-  (hoặc quét mã QR), nhập mã, chọn tài khoản, bấm **Cho phép**. Máy không cần gõ mật khẩu.
-  Đăng nhập xong: Trang chủ **"Dành cho bạn"** là trang đề xuất YouTube của chính bạn, tab mới **"Đăng ký"** là video mới của các kênh bạn đăng ký.
-  Đăng xuất: cùng dòng đó, bấm A hai lần. Chưa đăng nhập thì tab "Đăng ký" hiện video mới của các kênh bạn theo dõi trong app.
-  Lưu ý: đây là cách đăng nhập của app YouTube trên TV, không phải cách Google chính thức cho app ngoài — có thể bị Google chặn; nên dùng tài khoản phụ.
-  Mã đăng nhập lưu ở `data/account.json` trên thẻ nhớ (ai có thẻ là dùng được tài khoản), đăng xuất sẽ xóa tệp này.
-- **Nút gợi ý có màu**: A đỏ, B vàng, X xanh dương, Y xanh lá; L/R xám; START/SELECT xám xanh; chữ cạnh nút sáng hơn.
-- Tab **"Bài hát cho bé"** trong chế độ trẻ em.
+## Mới ở 2.4
+**Tài khoản Google & xem tiếp**
+- **Đăng nhập Google** (Cài đặt → Tài khoản & kênh → Tài khoản Google): máy hiện mã + mã QR, trên điện thoại mở google.com/device, nhập mã, bấm Cho phép.
+  "Dành cho bạn" là trang đề xuất của chính bạn, tab **"Đăng ký"** là video mới của kênh bạn đăng ký. Nên dùng tài khoản phụ (đây là cách đăng nhập của app YouTube trên TV).
+- Tab **"Xem tiếp"**: video xem dở trên điện thoại / web / TV (khi đăng nhập) hoặc trên máy này; mở là phát tiếp đúng chỗ.
+- "Dành cho bạn" / "Đăng ký" cuộn không dừng: hết trang của tài khoản thì nối tiếp gợi ý của app.
+
+**Cài đặt gọn thành 9 mục**: Tài khoản & kênh · Phát video · Âm thanh · Phụ đề · Giao diện · Tải về & bộ nhớ · Pin, phím & hệ thống · Chế độ trẻ em · Cập nhật & giới thiệu.
+A mở mục, B quay lại, L1/R1 sang mục bên cạnh.
+
+**Giao diện**
+- 6 bộ màu (Retro cam, YouTube đỏ, Đại dương, Rừng xanh, Neon hồng, Đen tuyền).
+- Tùy biến: ẩn / đổi thứ tự tab trang chủ, thêm tối đa 4 tab theo từ khóa, ẩn từng biểu tượng trên thanh trạng thái.
+- Nút gợi ý có màu (A đỏ, B vàng, X xanh dương, Y xanh lá).
+- Tên video tiếng **Hàn, Nhật, Trung, Thái** hiện đúng chữ (tự tải phông một lần khi gặp, cần Wi-Fi).
+
+**Tải về & file** (khi xem: SELECT → Tải về)
+- Video 720p (xem trong app) · Video + file MP4 · nhạc M4A · Opus · MP3 128 kbps.
+- File có tên dễ đọc ở thư mục **`NXT Tube`** gốc thẻ nhớ, mở được bằng máy tính / app khác. "Xuất video & nhạc đã tải" chép các bản đã tải trước đó.
+
+**Khi xem video** (SELECT → Tùy chọn video)
+- Bỏ qua đoạn tài trợ trong video (SponsorBlock: tự bỏ qua / chỉ báo / tắt), đoạn đánh dấu màu xanh lá trên thanh tua.
+- Chương: vạch chia trên thanh tua, bảng Chương để nhảy; ảnh nhỏ xem trước khi tua (gọn cho màn nhỏ).
+- Lặp 1 video / cả danh sách / ngẫu nhiên, lặp đoạn A–B.
+- Âm lượng tới 250% có chống vỡ tiếng, Giọng nói rõ; khóa phím khi bỏ túi (SELECT ×3 để mở).
+- Chế độ nghe nhạc: tắt hình, màn hình đĩa nhạc — mát máy, pin lâu. Tiết kiệm pin tự động khi pin dưới 20%.
+
+**Danh sách phát, kênh, tìm kiếm**
+- "Yêu thích" + tối đa 7 danh sách phát của bạn (Thư viện).
+- Báo video mới của kênh theo dõi (2 giờ một lần khi có Wi-Fi); tùy chọn tự tải video mới khi đang sạc.
+- Bộ lọc tìm kiếm (SELECT ở kết quả): thời gian tải lên, thời lượng, sắp xếp, chỉ trực tiếp.
+- Nhập kênh từ Google Takeout (`subscriptions.csv` vào thư mục `NXT Tube`).
+
+**Cập nhật**: máy đang chạy bản 2.1 trở lên tự nhận bản 2.4 qua OTA (bản cũ: Cài đặt → Cập nhật; từ 2.4: Cài đặt → Cập nhật & giới thiệu → Cập nhật).
 
 ## Mới ở 2.3
 - **Giao diện full màn hình trên máy màn 16:9** (Smart Pro / Smart Pro S 1280×720, các máy 16:9 trên muOS / Knulli): trước đây giao diện
