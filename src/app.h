@@ -284,6 +284,9 @@ double Account_resumeSeconds(const char *id, double duration);
 void Account_watchStart(const char *id, double pos, double dur);    /* 2.4.1: history / continue watching on the account */
 void Account_watchTime(const char *id, double pos, double dur, bool paused);
 void Account_like(const char *id, bool on);
+void Account_likeStateFetch(const char *id);
+int Account_likeState(const char *id);
+void Account_likeSet(const char *id, bool on);
 void Account_subscribe(const char *channel_id, bool on);
 const char *Account_name(void);
 void Account_logout(void);

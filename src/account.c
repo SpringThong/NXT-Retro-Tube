@@ -597,7 +597,21 @@ static struct { int kind; char id[48]; double pos, dur; bool paused, on; } wq[16
 static int wq_n;
 static char w_vid[16], w_cpn[20], w_play[2048], w_time[2048];
 static double w_last_et;
-enum { WJ_START = 1, WJ_TIME, WJ_LIKE, WJ_SUB };
+enum { WJ_START = 1, WJ_TIME, WJ_LIKE, WJ_SUB, WJ_LSTATE };
+static char ls_id[16]; static int ls_val = -1;   /* like state of a video as the account sees it */
+static const char *find_str(JSON_Value *v, const char *key, int depth) {
+    if (depth > 30) return NULL;
+    JSON_Object *o = json_value_get_object(v);
+    if (o) {
+        const char *x = json_object_get_string(o, key);
+        if (x) return x;
+        for (size_t i = 0; i < json_object_get_count(o); i++) { const char *r = find_str(json_object_get_value_at(o, i), key, depth + 1); if (r) return r; }
+        return NULL;
+    }
+    JSON_Array *a = json_value_get_array(v);
+    for (size_t i = 0; a && i < json_array_get_count(a); i++) { const char *r = find_str(json_array_get_value(a, i), key, depth + 1); if (r) return r; }
+    return NULL;
+}
 static void new_cpn(void) {
     static const char *A64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     for (int i = 0; i < 16; i++) w_cpn[i] = A64[rand() % 64];
@@ -639,6 +653,15 @@ static void do_job(int kind, const char *id, double pos, double dur, bool paused
         JSON_Value *v = tv_call(on ? "like/like" : "like/removelike", extra, err, sizeof(err));
         Log_msg("account like %s %s: %s", id, on ? "on" : "off", v ? "ok" : err);
         json_value_free(v);
+    } else if (kind == WJ_LSTATE) {
+        snprintf(extra, sizeof(extra), "\"videoId\":\"%s\"", id);
+        JSON_Value *v = tv_call("next", extra, err, sizeof(err));
+        const char *st = v ? find_str(v, "likeStatus", 0) : NULL;
+        pthread_mutex_lock(&wlock);
+        if (!strcmp(ls_id, id)) ls_val = st ? (!strcmp(st, "LIKE") ? 1 : 0) : -2;
+        pthread_mutex_unlock(&wlock);
+        Log_msg("account like state %s: %s", id, st ? st : (v ? "not in answer" : err));
+        json_value_free(v);
     } else if (kind == WJ_SUB) {
         snprintf(extra, sizeof(extra), "\"channelIds\":[\"%s\"],\"params\":\"EgIIAhgA\"", id);
         JSON_Value *v = tv_call(on ? "subscription/subscribe" : "subscription/unsubscribe", extra, err, sizeof(err));
@@ -673,3 +696,12 @@ void Account_watchStart(const char *id, double pos, double dur) { queue_job(WJ_S
 void Account_watchTime(const char *id, double pos, double dur, bool paused) { queue_job(WJ_TIME, id, pos, dur, paused, true); }
 void Account_like(const char *id, bool on) { queue_job(WJ_LIKE, id, 0, 0, false, on); }
 void Account_subscribe(const char *channel_id, bool on) { queue_job(WJ_SUB, channel_id, 0, 0, false, on); }
+void Account_likeStateFetch(const char *id) {
+    pthread_mutex_lock(&wlock); snprintf(ls_id, sizeof(ls_id), "%s", id ? id : ""); ls_val = -1; pthread_mutex_unlock(&wlock);
+    queue_job(WJ_LSTATE, id, 0, 0, false, true);
+}
+int Account_likeState(const char *id) {   /* -1 not known yet, -2 unknown, 0 not liked, 1 liked */
+    pthread_mutex_lock(&wlock); int v = id && !strcmp(id, ls_id) ? ls_val : -2; pthread_mutex_unlock(&wlock);
+    return v;
+}
+void Account_likeSet(const char *id, bool on) { pthread_mutex_lock(&wlock); if (id && !strcmp(id, ls_id)) ls_val = on; pthread_mutex_unlock(&wlock); }

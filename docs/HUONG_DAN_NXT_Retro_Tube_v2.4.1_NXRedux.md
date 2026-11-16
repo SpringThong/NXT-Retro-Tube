@@ -16,6 +16,7 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm �
 - **Lịch sử xem về tài khoản Google** (khi đã đăng nhập, Cài đặt → Tài khoản & kênh, mặc định bật): video xem trên máy hiện
   trong lịch sử YouTube và "Tiếp tục xem" trên điện thoại / web, đúng chỗ đang dừng.
 - **Thích / đăng ký vào tài khoản**: SELECT → Thích video này; Theo dõi kênh = đăng ký luôn trên tài khoản Google.
+  Video đã thích trên điện thoại / máy tính: dòng "Thích" hiện sẵn "Bỏ thích", và Thư viện có tab **Đã thích (Google)**.
 - **YouTube Music**: ở kết quả tìm bấm SELECT → Tìm trong: Bài hát (YouTube Music). SELECT → **Mix nhạc từ bài này** để có
   danh sách phát liên tục; ở chế độ nghe nhạc, hết danh sách thì app tự nối Mix.
 - **Bộ chỉnh âm (EQ)**: Cài đặt → Âm thanh: Trầm mạnh, Giọng hát, Loa nhỏ của máy, Tai nghe, Rock / EDM.

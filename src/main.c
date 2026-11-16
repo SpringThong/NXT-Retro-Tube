@@ -189,7 +189,7 @@ static struct {
     /* 2.4.1 */
     bool loungePanel; char loungeCode[32], loungeMsg[200]; int loungeState; double loungeSeek; Uint32 loungeReportAt; int loungeLastState;
     char accWatchId[16]; Uint32 accPingAt; bool accStarted; int accLastState;
-    bool liked; char likedId[16];
+    VideoList likedList; int likedJob; Uint32 likedAt; bool likedDirty;   /* Library → Đã thích (the Google account's Liked videos) */
     int radioJob; bool radioThenNext; bool fMusic; Uint32 ncNext; int ncNew; int autodlToday, autodlDay;
     /* overlays */
     bool osd; Uint32 osdUntil; Panel panel; int panelSel; bool stats;
@@ -416,6 +416,7 @@ static void open_video(const VideoItem *v, const VideoList *from, int index) {
     if (A.resolveJob) { Yt_forget(A.resolveJob); A.resolveJob = 0; }
     A.cur = *v; A.hasCur = true; A.watchErr[0] = 0;
     A.abA = A.abB = -1; A.sponsorDone = 0; A.keyLock = false;
+    if (Account_signedIn() && !K.enabled && !v->live) Account_likeStateFetch(v->id);
     Preview_set(NULL, NULL);
     if (S.sponsor && !v->live) Sponsor_fetch(v->id);
     if (from && from != &A.queue) {
@@ -852,6 +853,7 @@ static void poll_jobs(void) {
 
 /* ---------- navigation ---------- */
 static const VideoList *library_list(void) {
+    if (A.libTab == 4 + PL_count()) return &A.likedList;
     if (A.libTab >= 4) return PL_list(A.libTab - 4);
     return A.libTab == 0 ? Store_history() : A.libTab == 1 ? Store_later() : A.libTab == 2 ? Store_channels() : Store_downloads();
 }
@@ -1214,8 +1216,8 @@ static void run_option(int i) {
         }
         case OPT_PLAYLIST: open_panel(PANEL_PLAYLIST); return;
         case OPT_LIKE: {
-            bool on = !(A.liked && !strcmp(A.likedId, A.cur.id));
-            A.liked = on; snprintf(A.likedId, sizeof(A.likedId), "%s", A.cur.id);
+            bool on = Account_likeState(A.cur.id) != 1;
+            Account_likeSet(A.cur.id, on); A.likedDirty = true;
             Account_like(A.cur.id, on); toast(on ? "Đã thích · lưu vào tài khoản Google" : "Đã bỏ thích"); A.panel = PANEL_NONE; return; }
         case OPT_SCREENOFF: A.panel = PANEL_NONE; screen_off(); return;
         case OPT_RADIO: start_radio(false); A.panel = PANEL_NONE; return;
@@ -1745,14 +1747,14 @@ static void handle_key(Key k) {
         if (k == K_B) { A.screen = SC_HOME; A.focus = 0; return; }
         if (k == K_Y) { open_search(); return; }
         if (k == K_SELECT) { if (A.hasCur) A.screen = SC_WATCH; return; }
-        int ntabs = 4 + PL_count();
+        int ntabs = 4 + PL_count() + (Account_signedIn() && !K.enabled ? 1 : 0);
         if (k == K_L1 || k == K_R1) { A.libTab = (A.libTab + (k == K_R1 ? 1 : ntabs - 1)) % ntabs; A.libSel = 0; A.lscroll = 0; return; }
-        if (k == K_X && l->count && A.libTab >= 4) {
+        if (k == K_X && l->count && A.libTab >= 4 && A.libTab < 4 + PL_count()) {
             VideoItem v = l->items[A.libSel]; PL_toggle(A.libTab - 4, &v);
             if (A.libSel >= PL_list(A.libTab - 4)->count && A.libSel) A.libSel--;
             toast("Đã bỏ khỏi “%s”", T(PL_name(A.libTab - 4))); return;
         }
-        if (k == K_START && A.libTab >= 5) {
+        if (k == K_START && A.libTab >= 5 && A.libTab < 4 + PL_count()) {
             Uint32 t = SDL_GetTicks();
             if (A.confirmRow == 100 + A.libTab && t < A.confirmUntil) { toast("Đã xóa danh sách “%s”", PL_name(A.libTab - 4)); PL_delete(A.libTab - 4); A.libTab = 4; A.libSel = 0; A.confirmRow = -1; }
             else { A.confirmRow = 100 + A.libTab; A.confirmUntil = t + 3000; toast("Bấm START lần nữa để xóa danh sách này"); }
@@ -1982,7 +1984,7 @@ static void card_meta(const VideoList *l, int i, int libtab, char *meta, size_t 
     *mo = NULL; *progress = libtab == 0 ? Store_historyProgress(i) : libtab < 0 ? l->items[i].watched : 0;
     if (libtab == 0) { snprintf(meta, n, "%s · %s", l->items[i].channel, *progress >= 0.97 ? T("đã xem hết") : T("xem tiếp")); *mo = meta; }
     if (libtab == 2) { int f = channel_new(l->items[i].channel_id); if (f) snprintf(meta, n, T("%d video mới · A xem"), f); else snprintf(meta, n, "%s", T("A xem video mới của kênh")); *mo = meta; }
-    if (libtab >= 4) { snprintf(meta, n, "%s · %s", l->items[i].channel, T("X bỏ khỏi danh sách")); *mo = meta; }
+    if (libtab >= 4 && libtab < 4 + PL_count()) { snprintf(meta, n, "%s · %s", l->items[i].channel, T("X bỏ khỏi danh sách")); *mo = meta; }
     if (libtab == 3) { snprintf(meta, n, "%s · %s", l->items[i].channel, T("xem không cần mạng")); *mo = meta; }
 }
 static void draw_grid(const VideoList *l, int sel, bool focus, float *scroll, int libtab, bool loading_more, bool at_end) {
@@ -2161,9 +2163,10 @@ static void draw_library(void) {
     header_hints(SCREEN_R, k, t, 2);
     draw_stripes(76);
     const char *tabs[4] = {"Lịch sử", "Xem sau", "Kênh theo dõi", "Đã tải"};
-    int ntabs = 4 + PL_count(); if (ntabs > 12) ntabs = 12;
+    bool liked_tab = Account_signedIn() && !K.enabled;
+    int ntabs = 4 + PL_count() + (liked_tab ? 1 : 0); if (ntabs > 13) ntabs = 13;
     if (A.libTab >= ntabs) A.libTab = 0;
-    char lbl[12][72]; const char *lp[12];
+    char lbl[13][72]; const char *lp[13];
     int counts[4] = {Store_history()->count, Store_later()->count, Store_channels()->count, Store_downloads()->count};
     int fresh = channels_new_total();
     for (int i = 0; i < 4; i++) {
@@ -2171,14 +2174,16 @@ static void draw_library(void) {
         else snprintf(lbl[i], sizeof(lbl[i]), "%s %d", T(tabs[i]), counts[i]);
         lp[i] = lbl[i];
     }
-    for (int i = 4; i < ntabs; i++) { snprintf(lbl[i], sizeof(lbl[i]), "%s %d", T(PL_name(i - 4)), PL_list(i - 4)->count); lp[i] = lbl[i]; }
+    for (int i = 4; i < 4 + PL_count() && i < ntabs; i++) { snprintf(lbl[i], sizeof(lbl[i]), "%s %d", T(PL_name(i - 4)), PL_list(i - 4)->count); lp[i] = lbl[i]; }
+    if (liked_tab) { int i = ntabs - 1; snprintf(lbl[i], sizeof(lbl[i]), "%s %d", T("Đã thích (Google)"), A.likedList.count); lp[i] = lbl[i]; }
     draw_chips(lp, ntabs, A.libTab, false, 92);
     const VideoList *l = library_list();
     if (A.libSel >= l->count) A.libSel = l->count ? l->count - 1 : 0;
     if (l->count) draw_grid(l, A.libSel, true, &A.lscroll, A.libTab, false, false);
     else {
         const char *notes[5] = {"Video bạn xem sẽ hiện ở đây, kèm chỗ xem dở", "Bấm X trên một video để lưu xem sau", "Khi xem video: SELECT › Theo dõi kênh · hoặc nhập từ Google Takeout (Cài đặt)", "Khi xem video: SELECT › Tải về máy", "Khi xem video: SELECT › Thêm vào danh sách phát"};
-        draw_empty(T("Chưa có gì ở mục này"), T(notes[A.libTab < 4 ? A.libTab : 4]), false);
+        if (A.libTab == 4 + PL_count()) draw_empty(T(A.likedJob ? "Đang tải video đã thích…" : "Chưa có video đã thích"), T("Video bạn bấm Thích trên điện thoại, máy tính hay máy này"), A.likedJob != 0);
+        else draw_empty(T("Chưa có gì ở mục này"), T(notes[A.libTab < 4 ? A.libTab : 4]), false);
     }
     if (A.hasCur) draw_mini();
     draw_nav(A.libTab == 2 ? 2 : 3, -1);
@@ -2789,7 +2794,7 @@ static void draw_panel(void) {
                 case OPT_LOCK: snprintf(label, sizeof(label), "%s", T("Khóa phím")); snprintf(note, sizeof(note), "%s", T("Bỏ túi không lo bấm nhầm · SELECT ×3 để mở")); break;
                 case OPT_MUSIC: { bool on = !strcmp(QUALITY_ID[A.quality], "audio");
                     snprintf(label, sizeof(label), "%s", on ? T("Bật lại hình") : T("Chế độ nghe nhạc")); snprintf(note, sizeof(note), "%s", on ? T("Quay về chất lượng trước đó") : T("Tắt hình, màn hình nhạc · mát máy, pin lâu")); break; }
-                case OPT_LIKE: { bool on = A.liked && !strcmp(A.likedId, A.cur.id);
+                case OPT_LIKE: { bool on = Account_likeState(A.cur.id) == 1;
                     snprintf(label, sizeof(label), "%s", on ? T("Bỏ thích") : T("Thích video này")); snprintf(note, sizeof(note), "%s", T("Lưu vào tài khoản Google · danh sách Video đã thích")); break; }
                 case OPT_SCREENOFF: snprintf(label, sizeof(label), "%s", T("Tắt màn hình, nghe tiếp")); snprintf(note, sizeof(note), "%s", T("Tiếng vẫn chạy, đỡ tốn pin · bấm phím bất kỳ để bật lại")); break;
                 case OPT_RADIO: snprintf(label, sizeof(label), "%s", T("Mix nhạc từ bài này")); snprintf(note, sizeof(note), "%s", T("YouTube Music chọn tiếp các bài hợp gu · phát liên tục")); break;
@@ -3634,6 +3639,18 @@ static void update(void) {
         else if (st.audio_only && S.autoplay && !A.cur.live) start_radio(true);   /* music mode: endless, like YouTube Music */
     }
     radio_poll();
+    /* Library → Đã thích (Google): the account's Liked videos, liked anywhere; refreshed every 5 min or after a like here */
+    if (A.likedJob) {
+        JobState js = Yt_state(A.likedJob);
+        if (js == JOB_DONE || js == JOB_FAILED) {
+            VideoList l = {0};
+            if (js == JOB_DONE && Yt_takeList(A.likedJob, &l)) { VideoList_clear(&A.likedList); A.likedList = l; } else VideoList_clear(&l);
+            Yt_forget(A.likedJob); A.likedJob = 0; A.likedAt = now ? now : 1;
+        }
+    } else if (A.screen == SC_LIBRARY && A.libTab == 4 + PL_count() && Account_signedIn() && !K.enabled &&
+               (!A.likedAt || A.likedDirty || now - A.likedAt > 300000)) {
+        A.likedJob = Yt_searchPage("@yt:VLLL", 0, 200, false, true); A.likedDirty = false;
+    }
     /* your Google account: history + where you stopped (any device can continue) */
     if (A.hasCur && Account_signedIn() && S.acc_history && !st.live && st.duration > 0 && !K.enabled) {
         if (strcmp(A.accWatchId, A.cur.id)) { snprintf(A.accWatchId, sizeof(A.accWatchId), "%s", A.cur.id); A.accStarted = false; A.accPingAt = now + 4000; }

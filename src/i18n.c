@@ -643,6 +643,10 @@ static const char *const PAIRS[][2] = {
     {"Video YouTube", "YouTube videos"},
     {"YouTube Music", "YouTube Music"},
     {"YouTube Music không trả về bài nào", "YouTube Music returned no songs"},
+    {"Đã thích (Google)", "Liked (Google)"},
+    {"Đang tải video đã thích…", "Loading liked videos…"},
+    {"Chưa có video đã thích", "No liked videos yet"},
+    {"Video bạn bấm Thích trên điện thoại, máy tính hay máy này", "Videos you liked on your phone, computer or this device"},
 };
 #define NPAIRS (sizeof(PAIRS) / sizeof(PAIRS[0]))
 #define HASH_N 1024
