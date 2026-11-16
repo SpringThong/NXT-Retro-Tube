@@ -774,6 +774,61 @@ static int w_pings;
 
 /* ---------- the account's subscribed channels (so channels subscribed on a phone show up here) ---------- */
 static VideoItem ch_found[400]; static int ch_n; static bool ch_ready;
+/* channel pictures: "channel id -> picture address", learnt from the account's channel list, kept in data/avatars.txt */
+#define AV_MAX 600
+static struct { char cid[28]; char url[230]; } av[AV_MAX]; static int av_n; static bool av_loaded;
+static pthread_mutex_t av_lock = PTHREAD_MUTEX_INITIALIZER;
+static void av_load_locked(void) {
+    if (av_loaded) return;
+    av_loaded = true;
+    char path[1200]; snprintf(path, sizeof(path), "%s/avatars.txt", paths.data);
+    FILE *f = fopen(path, "r"); if (!f) return;
+    char line[300];
+    while (av_n < AV_MAX && fgets(line, sizeof(line), f)) {
+        char c[28], u[230];
+        if (sscanf(line, "%27s %229s", c, u) == 2 && strlen(c) == 24) { snprintf(av[av_n].cid, 28, "%s", c); snprintf(av[av_n].url, 230, "%s", u); av_n++; }
+    }
+    fclose(f);
+}
+static void av_set(const char *cid, const char *url) {   /* caller holds av_lock */
+    if (!url || strlen(url) > 200 || strlen(url) < 12) return;
+    char full[230]; snprintf(full, sizeof(full), "%s%s", !strncmp(url, "//", 2) ? "https:" : "", url);
+    char *eq = strrchr(full, '=');           /* "=s88-c-k-…": ask for 160 px, as JPEG */
+    if (eq && eq[1] == 's') snprintf(eq, sizeof(full) - (eq - full), "=s160-c-k-rj");
+    for (int i = 0; i < av_n; i++) if (!strcmp(av[i].cid, cid)) { snprintf(av[i].url, 230, "%s", full); return; }
+    if (av_n < AV_MAX) { snprintf(av[av_n].cid, 28, "%s", cid); snprintf(av[av_n].url, 230, "%s", full); av_n++; }
+}
+static void av_save_locked(void) {
+    char path[1200], tmp[1210]; snprintf(path, sizeof(path), "%s/avatars.txt", paths.data); snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    FILE *f = fopen(tmp, "w"); if (!f) return;
+    for (int i = 0; i < av_n; i++) fprintf(f, "%s %s\n", av[i].cid, av[i].url);
+    if (!fclose(f)) rename(tmp, path);
+}
+/* key = "@" + the last 14 letters of a channel id (thumbnail names are short). The picture address, if known. */
+bool Account_avatarUrl(const char *key, char *out, size_t n) {
+    bool ok = false;
+    if (!key || key[0] != '@' || strlen(key) != 15) return false;
+    pthread_mutex_lock(&av_lock); av_load_locked();
+    for (int i = 0; i < av_n && !ok; i++) if (!strcmp(av[i].cid + 10, key + 1)) { snprintf(out, n, "%s", av[i].url); ok = true; }
+    pthread_mutex_unlock(&av_lock);
+    return ok;
+}
+bool Account_avatarKey(const char *cid, char *key16) {   /* true + key when this channel's picture is known */
+    if (!cid || strlen(cid) != 24) return false;
+    char k[16]; snprintf(k, sizeof(k), "@%s", cid + 10);
+    char u[230]; if (!Account_avatarUrl(k, u, sizeof(u))) return false;
+    snprintf(key16, 16, "%s", k); return true;
+}
+static const char *find_pic(JSON_Value *v, int depth) {   /* a yt3 / ggpht picture address anywhere inside */
+    if (depth > 12) return NULL;
+    const char *s = json_value_get_string(v);
+    if (s) return (strstr(s, "yt3.") || strstr(s, "ggpht.com") || strstr(s, "googleusercontent.com")) ? s : NULL;
+    JSON_Object *o = json_value_get_object(v);
+    if (o) { for (size_t i = 0; i < json_object_get_count(o); i++) { const char *r = find_pic(json_object_get_value_at(o, i), depth + 1); if (r) return r; } return NULL; }
+    JSON_Array *a = json_value_get_array(v);
+    for (size_t i = 0; a && i < json_array_get_count(a); i++) { const char *r = find_pic(json_array_get_value(a, i), depth + 1); if (r) return r; }
+    return NULL;
+}
 static const char *ch_title(JSON_Object *o) {
     const char *t = json_object_dotget_string(o, "title.simpleText");
     if (!t) t = json_object_dotget_string(json_array_get_object(json_object_dotget_array(o, "title.runs"), 0), "text");
@@ -781,6 +836,7 @@ static const char *ch_title(JSON_Object *o) {
     if (!t) t = find_str(json_object_get_wrapping_value(o), "text", 0);
     return t;
 }
+static int ch_pics;
 static void ch_walk(JSON_Value *v, VideoItem *out, int *n, int max, int depth) {
     if (depth > 40) return;
     JSON_Object *o = json_value_get_object(v);
@@ -798,6 +854,8 @@ static void ch_walk(JSON_Value *v, VideoItem *out, int *n, int max, int depth) {
                 snprintf(out[*n].channel_id, sizeof(out[0].channel_id), "%s", id);
                 snprintf(out[*n].channel, sizeof(out[0].channel), "%s", t); snprintf(out[*n].title, sizeof(out[0].title), "%s", t);
                 (*n)++;
+                const char *pic = find_pic(v, 0);
+                if (pic) { pthread_mutex_lock(&av_lock); av_load_locked(); av_set(id, pic); ch_pics++; pthread_mutex_unlock(&av_lock); }
             }
             return;
         }
@@ -825,8 +883,10 @@ static void ch_fetch(void) {
     for (int p = 0; p < 2 && !n; p++) {
         char extra[80]; snprintf(extra, sizeof(extra), "\"browseId\":\"%s\"", pages[p]);
         JSON_Value *v = tv_call("browse", extra, err, sizeof(err));
+        ch_pics = 0;
         if (v) ch_walk(v, tmp, &n, 400, 0);
-        Log_msg("account channels %s: %s, %d channels%s%s", pages[p], v ? "ok" : err, n, n ? ", first: " : "", n ? tmp[0].channel : "");
+        Log_msg("account channels %s: %s, %d channels, %d pictures%s%s", pages[p], v ? "ok" : err, n, ch_pics, n ? ", first: " : "", n ? tmp[0].channel : "");
+        if (ch_pics) { pthread_mutex_lock(&av_lock); av_save_locked(); pthread_mutex_unlock(&av_lock); }
         if (v && !n) { char ids[400] = ""; int k = 0; ch_ids(v, ids, sizeof(ids), &k, 0); Log_msg("account channels %s links to: %s", pages[p], ids[0] ? ids : "(nothing)"); }
         json_value_free(v);
     }

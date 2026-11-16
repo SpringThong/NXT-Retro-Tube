@@ -100,6 +100,10 @@ static bool fetch(const char *id) {
     char url[200], path[1200], tmp[1260];
     thumb_path(id, path, sizeof(path));
     snprintf(tmp, sizeof(tmp), "%s.%lx.part", path, (unsigned long)pthread_self());
+    if (id[0] == '@') {   /* a channel's picture */
+        char au[240];
+        return Account_avatarUrl(id, au, sizeof(au)) && (fetch_url(au, path, tmp, true) || fetch_url(au, path, tmp, false));
+    }
     snprintf(url, sizeof(url), "https://i.ytimg.com/vi/%s/mqdefault.jpg", id);
     if (fetch_url(url, path, tmp, true)) return true;
     snprintf(url, sizeof(url), "https://i.ytimg.com/vi/%s/hqdefault.jpg", id);
@@ -152,7 +156,7 @@ void Thumbs_quit(void) {
 void Thumbs_setRenderer(SDL_Renderer *r) { renderer = r; }
 void Thumbs_tick(void) { tick_counter++; loads_this_frame = 0; }
 SDL_Texture *Thumbs_get(const char *id) {
-    if (!id || strlen(id) != 11 || !renderer) return NULL;
+    if (!id || !renderer || !(strlen(id) == 11 || (id[0] == '@' && strlen(id) == 15))) return NULL;   /* a video, or "@…" = a channel picture */
     for (int i = 0; i < TEX_N; i++) if (!strcmp(slots[i].id, id)) { slots[i].used = tick_counter; return slots[i].tex; }
     pthread_mutex_lock(&lock);
     for (int r = 0; r < nready; r++) if (!strcmp(ready[r].id, id)) {

@@ -1968,6 +1968,18 @@ static void draw_logo(int x, int y) {
 }
 static void draw_stripes(int y) { D_rect(0, y, SCREEN_W, 2, C_TOMATO); D_rect(0, y + 2, SCREEN_W, 2, C_MUSTARD); D_rect(0, y + 4, SCREEN_W, 2, C_INK); }
 
+/* a channel's real picture as a disc, when the Google account told us where it is; false = draw the initials */
+static bool draw_avatar(const char *cid, int cx, int cy, int r, SDL_Color bg) {
+    char key[16];
+    if (!Account_avatarKey(cid, key)) return false;
+    SDL_Texture *t = Thumbs_get(key);
+    if (!t) return false;
+    SDL_Rect q = {cx - r, cy - r, 2 * r, 2 * r};
+    SDL_RenderCopy(A.ren, t, NULL, &q);
+    D_corners(q.x, q.y, q.w, q.h, r, bg);
+    D_ring(cx, cy, r, 2, C_BLACK);
+    return true;
+}
 static void draw_card(int x, int y, int w, const VideoItem *v, bool selected, double progress, const char *meta_override, bool channel_card) {
     if (selected) { x -= 3; y -= 3; }
     int th = (w - 16) * 9 / 16, h = 8 + th + 10 + 55 + 4 + 23 + 8;
@@ -1977,8 +1989,11 @@ static void draw_card(int x, int y, int w, const VideoItem *v, bool selected, do
     if (channel_card) {
         D_round(tr.x, tr.y, tr.w, tr.h, 12, C_BAR); D_roundRing(tr.x, tr.y, tr.w, tr.h, 12, 2, C_BLACK);
         int r = 52, cx = tr.x + tr.w / 2, cy = tr.y + tr.h / 2;
-        D_circle(cx + 6, cy + 6, r, C_BLACK); D_circle(cx, cy, r, avatar_color(v->title)); D_ring(cx, cy, r, 3, C_BLACK);
-        char ini[16]; initials(v->title, ini); D_text(F_XBOLD, 34, ini, cx, cy - D_fontHeight(F_XBOLD, 34) / 2, C_INK, 0, AL_CENTER);
+        D_circle(cx + 6, cy + 6, r, C_BLACK);
+        if (!draw_avatar(v->channel_id, cx, cy, r, C_BAR)) {
+            D_circle(cx, cy, r, avatar_color(v->title)); D_ring(cx, cy, r, 3, C_BLACK);
+            char ini[16]; initials(v->title, ini); D_text(F_XBOLD, 34, ini, cx, cy - D_fontHeight(F_XBOLD, 34) / 2, C_INK, 0, AL_CENTER);
+        }
     } else {
         D_thumb(v->id, tr, bg);
         char badge[24];
@@ -2003,8 +2018,11 @@ static void draw_card(int x, int y, int w, const VideoItem *v, bool selected, do
     int tx = x + 10, tw = w - 20;
     if (!channel_card) {
         SDL_Color ac = avatar_color(v->channel);
-        D_circle(x + 30, ty + 20, 20, C_BLACK); D_circle(x + 30, ty + 20, 18, ac);
-        char ini[16]; initials(v->channel, ini); D_text(F_XBOLD, 15, ini, x + 30, ty + 20 - D_fontHeight(F_XBOLD, 15) / 2, C_INK, 0, AL_CENTER);
+        D_circle(x + 30, ty + 20, 20, C_BLACK);
+        if (!draw_avatar(v->channel_id, x + 30, ty + 20, 19, bg)) {
+            D_circle(x + 30, ty + 20, 18, ac);
+            char ini[16]; initials(v->channel, ini); D_text(F_XBOLD, 15, ini, x + 30, ty + 20 - D_fontHeight(F_XBOLD, 15) / 2, C_INK, 0, AL_CENTER);
+        }
         tx = x + 62; tw = w - 72;
     }
     D_textBox(F_SEMI, 22, v->title, tx, ty - 2, tw, 2, 28, C_INK);
@@ -2214,8 +2232,11 @@ static void draw_strip(bool focused) {
             snprintf(name, sizeof(name), T("Tất cả %d kênh"), ch->count);
         } else {
             const VideoItem *c = &ch->items[strip_idx[i]];
-            D_circle(cx + 3, cy + 3, 28, C_BLACK); D_circle(cx, cy, 28, avatar_color(c->title)); D_ring(cx, cy, 28, 2, C_BLACK);
-            initials(c->title, ini); D_text(F_XBOLD, 20, ini, cx, cy - D_fontHeight(F_XBOLD, 20) / 2, C_INK, 0, AL_CENTER);
+            D_circle(cx + 3, cy + 3, 28, C_BLACK);
+            if (!draw_avatar(c->channel_id, cx, cy, 28, on ? C_RAISED : C_BG)) {
+                D_circle(cx, cy, 28, avatar_color(c->title)); D_ring(cx, cy, 28, 2, C_BLACK);
+                initials(c->title, ini); D_text(F_XBOLD, 20, ini, cx, cy - D_fontHeight(F_XBOLD, 20) / 2, C_INK, 0, AL_CENTER);
+            }
             if (channel_new(c->channel_id) > 0) { D_circle(cx + 21, cy - 21, 8, C_BLACK); D_circle(cx + 21, cy - 21, 6, C_MUSTARD); }
             snprintf(name, sizeof(name), "%s", c->title);
         }
