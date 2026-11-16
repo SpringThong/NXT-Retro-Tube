@@ -4,6 +4,7 @@
 # Reply (one line):             @@NXT {"ok": true, "data": {...}} | {"ok": false, "error": "..."}
 # SPDX-License-Identifier: GPL-3.0-only
 import json
+import re
 import os
 import sys
 import time
@@ -111,13 +112,21 @@ class NxtTubeServerIE(InfoExtractor):
             resp = ydl.urlopen(Request(url))
         return {'text': resp.read().decode('utf-8', 'replace')}
 
-    def _list(self, ydl, url, count, start=0):
+    def _list(self, ydl, url, count, start=0, playlists=False):
         info = self._run(ydl, url, {'extract_flat': 'in_playlist', 'playliststart': start + 1, 'playlistend': start + count,
                                    'extractor_args': {}, 'noplaylist': False})
         entries = []
         for e in info.get('entries') or []:
             if e:
-                entries.append({k: e.get(k) for k in ENTRY_KEYS if e.get(k) is not None})
+                d = {k: e.get(k) for k in ENTRY_KEYS if e.get(k) is not None}
+                if playlists:      # a channel's playlists tab: the cover is a frame of one of its videos
+                    d['pl'] = True
+                    for t in e.get('thumbnails') or []:
+                        m = re.search(r'/vi(?:_webp)?/([0-9A-Za-z_-]{11})/', (t or {}).get('url') or '')
+                        if m:
+                            d['thumb_id'] = m.group(1)
+                            break
+                entries.append(d)
         return {'entries': entries}
 
     def _real_extract(self, url):
@@ -142,7 +151,13 @@ class NxtTubeServerIE(InfoExtractor):
                     data = self._list(ydl, '%s%d:%s' % ('ytsearchdate' if req.get('newest') else 'ytsearch', start + n, req['q']), n, start)
                 elif op == 'channel':
                     n, start = int(req.get('n') or 30), int(req.get('start') or 0)
-                    data = self._list(ydl, 'https://www.youtube.com/channel/%s/videos' % req['id'], n, start)
+                    cid = req['id']
+                    if cid.startswith('PL:'):          # the videos of one playlist, in its own order
+                        data = self._list(ydl, 'https://www.youtube.com/playlist?list=%s' % cid[3:], n, start)
+                    elif cid.endswith('/playlists'):   # the playlists a channel made
+                        data = self._list(ydl, 'https://www.youtube.com/channel/%s' % cid, n, start, playlists=True)
+                    else:
+                        data = self._list(ydl, 'https://www.youtube.com/channel/%s/videos' % cid, n, start)
                 elif op == 'fetch':
                     data = self._fetch(ydl, req['url'])
                 elif op == 'ping':

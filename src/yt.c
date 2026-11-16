@@ -382,6 +382,7 @@ static void parse_entry(JSON_Object *e, VideoItem *v) {
     const char *ls = json_object_get_string(e, "live_status");
     v->live = json_object_get_boolean(e, "is_live") == 1 || (ls && !strcmp(ls, "is_live"));
 }
+static __thread bool list_pl;   /* the list being read is a channel's playlists tab */
 static bool parse_list_obj(JSON_Object *root_obj, VideoList *out) {
     JSON_Array *entries = json_object_get_array(root_obj, "entries");
     if (!entries) return false;
@@ -390,6 +391,23 @@ static bool parse_list_obj(JSON_Object *root_obj, VideoList *out) {
         if (!e) continue;
         const char *type = json_object_get_string(e, "_type"), *ie = json_object_get_string(e, "ie_key");
         if (type && strcmp(type, "url")) continue;
+        if (list_pl) {   /* a channel's playlists: id = the playlist, cover = one of its videos */
+            const char *pid = json_object_get_string(e, "id"), *t = json_object_get_string(e, "title");
+            if (!pid || !*pid || !t || !*t || strlen(pid) >= sizeof(((VideoItem *)0)->pl_id)) continue;
+            VideoItem v; memset(&v, 0, sizeof(v));
+            scopy(v.pl_id, sizeof(v.pl_id), pid); scopy(v.title, sizeof(v.title), t);
+            const char *th = json_object_get_string(e, "thumb_id");
+            if (!th) {   /* one-shot yt-dlp: look in its thumbnails */
+                JSON_Array *ta = json_object_get_array(e, "thumbnails");
+                for (size_t k = 0; ta && k < json_array_get_count(ta) && !th; k++) {
+                    const char *u = json_object_get_string(json_array_get_object(ta, k), "url"), *p = u ? strstr(u, "/vi") : NULL;
+                    if (p && (p = strchr(p + 1, '/')) && strlen(p + 1) >= 12 && p[12] == '/') { static __thread char tid[12]; memcpy(tid, p + 1, 11); tid[11] = 0; th = tid; }
+                }
+            }
+            if (th && strlen(th) == 11) scopy(v.id, sizeof(v.id), th);
+            VideoList_add(out, &v);
+            continue;
+        }
         if (ie && strcmp(ie, "Youtube")) continue; /* skip channels/playlists/shorts tabs */
         VideoItem v; parse_entry(e, &v);
         if (strlen(v.id) != 11) continue;
@@ -639,6 +657,8 @@ static Job *next_job(bool fast_lane) {
 }
 static bool do_list(int w, const Job *job, VideoList *list, char *error, size_t es) {
     char target[400], count[16];
+    size_t al = strlen(job->arg);
+    list_pl = job->kind == K_CHANNEL && al > 10 && !strcmp(job->arg + al - 10, "/playlists");
     snprintf(count, sizeof(count), "%d", job->count);
     if (!helper_disabled) {
         JSON_Value *req = json_value_init_object(); JSON_Object *r = json_value_get_object(req);
@@ -664,6 +684,8 @@ static bool do_list(int w, const Job *job, VideoList *list, char *error, size_t 
         bool bydate = job->newest || (bar && strstr(q, "@sp:CAI"));
         snprintf(target, sizeof(target), "%s%d:%s", bydate ? "ytsearchdate" : "ytsearch", job->start + job->count, bar ? bar + 1 : q);
     }
+    else if (!strncmp(job->arg, "PL:", 3)) snprintf(target, sizeof(target), "https://www.youtube.com/playlist?list=%s", job->arg + 3);
+    else if (list_pl) snprintf(target, sizeof(target), "https://www.youtube.com/channel/%s", job->arg);
     else snprintf(target, sizeof(target), "https://www.youtube.com/channel/%s/videos", job->arg);
     const char *extra[] = {"--flat-playlist", "-J", "--playlist-start", first, "--playlist-end", count, target, NULL};
     char *text = run_ytdlp(extra, 60, error, es);

@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define APP_NAME "NXT Retro Tube"
-#define APP_VERSION "2.6"
+#define APP_VERSION "2.6.1"
 #define ACC_SEND_HISTORY 1
 /* scanout.c: direct panel output (Smart Pro S, when SDL cannot open the panel) */
 bool Scanout_open(int *lw, int *lh);
@@ -79,6 +79,7 @@ typedef struct {
     long long views;
     bool live;
     float watched;         /* 0..1 how far your Google account got (any device), 0 = unknown */
+    char pl_id[48];        /* 2.7: set = this entry is a channel's playlist (id = a video of it, for the cover) */
 } VideoItem;
 
 typedef struct {
