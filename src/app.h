@@ -7,7 +7,8 @@
 #include <stdint.h>
 
 #define APP_NAME "NXT Retro Tube"
-#define APP_VERSION "2.5"
+#define APP_VERSION "2.6"
+#define ACC_SEND_HISTORY 1
 /* scanout.c: direct panel output (Smart Pro S, when SDL cannot open the panel) */
 bool Scanout_open(int *lw, int *lh);
 SDL_Surface *Scanout_surface(void);
@@ -288,7 +289,10 @@ void Account_like(const char *id, bool on);
 void Account_likeStateFetch(const char *id);
 int Account_likeState(const char *id);
 void Account_likeSet(const char *id, bool on);
+int Account_subStateTake(const char *id);              /* the account is subscribed to this video's channel: 1 / 0 once, -1 not known */
 void Account_subscribe(const char *channel_id, bool on);
+void Account_channelsFetch(void);                      /* background: the channels the account is subscribed to */
+int Account_channelsTake(VideoItem *out, int max);      /* >0 once, when a fresh list arrived */
 const char *Account_name(void);
 void Account_logout(void);
 void Account_startLogin(void);

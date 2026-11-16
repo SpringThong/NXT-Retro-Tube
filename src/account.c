@@ -286,7 +286,8 @@ static JSON_Value *tv_call(const char *endpoint, const char *extra, char *err, s
 /* the same call as another TV client (embedded TV player), for the history URLs */
 static JSON_Value *tv_call_as(const char *name, const char *ver, const char *id, const char *endpoint, const char *extra, char *err, size_t en) {
     size_t n = strlen(extra) + 800; char *body = malloc(n); if (!body) return NULL;
-    bool samsung = !strcmp(name, "TVHTML5_SAMSUNG");
+    bool novis = !strcmp(name, "TVHTML5_SAMSUNG_ACC");   /* signed-in call only: no anonymous visitor id next to the account token */
+    bool samsung = novis || !strcmp(name, "TVHTML5_SAMSUNG");
     if (samsung)   /* the Tizen TV profile: YouTube still gives it a full player answer */
         snprintf(body, n, "{\"context\":{\"client\":{\"clientName\":\"TVHTML5\",\"clientVersion\":\"%s\",\"hl\":\"%s\",\"gl\":\"VN\","
                  "\"deviceMake\":\"Samsung\",\"deviceModel\":\"UKS9800\",\"osName\":\"Tizen\",\"osVersion\":\"2.4.0\",\"userAgent\":\"" SAMSUNG_UA "\"},"
@@ -303,7 +304,7 @@ static JSON_Value *tv_call_as(const char *name, const char *ver, const char *id,
     char auth[2200], h[3300];
     if (bearer(auth, sizeof(auth), false, err, en)) {
         snprintf(h, sizeof(h), "%sX-YouTube-Client-Name: %s\r\nX-YouTube-Client-Version: %s\r\n", auth, id, ver);
-        const char *vis = Innertube_visitor();
+        const char *vis = novis ? NULL : Innertube_visitor();
         if (vis && *vis) { size_t l = strlen(h); snprintf(h + l, sizeof(h) - l, "X-Goog-Visitor-Id: %s\r\n", vis); }
         v = post_json_ua(url, body, h, samsung ? SAMSUNG_UA : TV_UA, err, en);
     }
@@ -701,8 +702,22 @@ static int wq_n;
 static char w_vid[16], w_cpn[20], w_play[2048], w_time[2048];
 static double w_last_et;
 static char fb_play[1400], fb_time[1400];
-enum { WJ_START = 1, WJ_TIME, WJ_LIKE, WJ_SUB, WJ_LSTATE };
+enum { WJ_START = 1, WJ_TIME, WJ_LIKE, WJ_SUB, WJ_LSTATE, WJ_CHANS };
+static int ls_sub = -1;   /* is the account subscribed to that video's channel: -1 not known, 0, 1 (handed out once) */
 static char ls_id[16]; static int ls_val = -1;   /* like state of a video as the account sees it */
+static int find_bool(JSON_Value *v, const char *key, int depth) {   /* -1 when the key is nowhere */
+    if (depth > 30) return -1;
+    JSON_Object *o = json_value_get_object(v);
+    if (o) {
+        JSON_Value *x = json_object_get_value(o, key);
+        if (x && json_value_get_type(x) == JSONBoolean) return json_value_get_boolean(x);
+        for (size_t i = 0; i < json_object_get_count(o); i++) { int r = find_bool(json_object_get_value_at(o, i), key, depth + 1); if (r >= 0) return r; }
+        return -1;
+    }
+    JSON_Array *a = json_value_get_array(v);
+    for (size_t i = 0; a && i < json_array_get_count(a); i++) { int r = find_bool(json_array_get_value(a, i), key, depth + 1); if (r >= 0) return r; }
+    return -1;
+}
 static const char *find_str(JSON_Value *v, const char *key, int depth) {
     if (depth > 30) return NULL;
     JSON_Object *o = json_value_get_object(v);
@@ -721,15 +736,103 @@ static void new_cpn(void) {
     for (int i = 0; i < 16; i++) w_cpn[i] = A64[rand() % 64];
     w_cpn[16] = 0;
 }
+/* set (replace) one query parameter of a tracking URL */
+static bool w_samsung; static unsigned w_t0;
+static void set_q(char *url, size_t n, const char *key, const char *val) {
+    char pat[40]; size_t kl = strlen(key);
+    for (int d = 0; d < 2; d++) {
+        snprintf(pat, sizeof(pat), "%c%s=", d ? '&' : '?', key);
+        for (char *s; (s = strstr(url, pat)); ) {
+            char *e = strchr(s + 1 + kl, '&');
+            if (e) memmove(s + 1, e + 1, strlen(e + 1) + 1); else s[*s == '?' ? 1 : 0] = 0;
+        }
+    }
+    size_t l = strlen(url);
+    snprintf(url + l, n - l, "%s%s=%s", !strchr(url, '?') ? "?" : (url[l - 1] == '?' || url[l - 1] == '&') ? "" : "&", key, val);
+}
 static void ping(const char *base_url, const char *extra) {
     if (!base_url[0]) return;
-    char err[200] = "", auth[2200], url[3000];
+    char err[200] = "", auth[2200], url[3000], kv[400];
     if (!bearer(auth, sizeof(auth), false, err, sizeof(err))) return;
-    snprintf(url, sizeof(url), "%s&ver=2&cpn=%s%s", base_url, w_cpn, extra);
+    snprintf(url, sizeof(url), "%s", base_url);
+    set_q(url, sizeof(url), "ver", "2"); set_q(url, sizeof(url), "cpn", w_cpn);
+    if (w_samsung) {   /* what the TV app itself adds to every report */
+        set_q(url, sizeof(url), "c", "TVHTML5"); set_q(url, sizeof(url), "cver", "5.20260707"); set_q(url, sizeof(url), "cplayer", "UNIPLAYER");
+        set_q(url, sizeof(url), "cbrand", "Samsung"); set_q(url, sizeof(url), "cmodel", "UKS9800"); set_q(url, sizeof(url), "cos", "Tizen"); set_q(url, sizeof(url), "cosver", "2.4.0");
+        set_q(url, sizeof(url), "cplatform", "TV"); set_q(url, sizeof(url), "hl", S.lang ? "en_US" : "vi_VN"); set_q(url, sizeof(url), "cr", "VN");
+        set_q(url, sizeof(url), "volume", "100"); set_q(url, sizeof(url), "muted", "0"); set_q(url, sizeof(url), "fmt", "136"); set_q(url, sizeof(url), "afmt", "140");
+        char rt[24]; snprintf(rt, sizeof(rt), "%.3f", (SDL_GetTicks() - w_t0) / 1000.0); set_q(url, sizeof(url), "rt", rt); set_q(url, sizeof(url), "lact", "1500");
+    } else set_q(url, sizeof(url), "el", "detailpage");   /* without it the view is filed as a Short */
+    snprintf(kv, sizeof(kv), "%s", extra);         /* "&a=1&b=2": each one replaces what the URL had */
+    for (char *t = strtok(kv, "&"); t; t = strtok(NULL, "&")) { char *eq = strchr(t, '='); if (!eq) continue; *eq = 0; set_q(url, sizeof(url), t, eq + 1); }
     char h[2600]; snprintf(h, sizeof(h), "%sOrigin: https://www.youtube.com\r\nReferer: https://www.youtube.com/tv\r\n", auth);
-    char *r = Innertube_http(url, NULL, h, TV_UA, err, sizeof(err));
-    if (!r && err[0] && !strstr(err, "204")) Log_msg("account ping: %s", err);
+    char *r = Innertube_http(url, NULL, h, w_samsung ? SAMSUNG_UA : TV_UA, err, sizeof(err));
+    if (!r && err[0] && !strstr(err, "204") && !strstr(err, "empty reply")) Log_msg("account ping: %s", err);
     free(r);
+}
+static int w_pings;
+
+/* ---------- the account's subscribed channels (so channels subscribed on a phone show up here) ---------- */
+static VideoItem ch_found[400]; static int ch_n; static bool ch_ready;
+static const char *ch_title(JSON_Object *o) {
+    const char *t = json_object_dotget_string(o, "title.simpleText");
+    if (!t) t = json_object_dotget_string(json_array_get_object(json_object_dotget_array(o, "title.runs"), 0), "text");
+    if (!t) t = find_str(json_object_get_wrapping_value(o), "simpleText", 0);
+    if (!t) t = find_str(json_object_get_wrapping_value(o), "text", 0);
+    return t;
+}
+static void ch_walk(JSON_Value *v, VideoItem *out, int *n, int max, int depth) {
+    if (depth > 40) return;
+    JSON_Object *o = json_value_get_object(v);
+    if (o) {
+        static const char *eps[] = {"navigationEndpoint", "onSelectCommand", "endpoint", "command", "onClickCommand"};
+        for (int e = 0; e < 5; e++) {
+            JSON_Object *ep = json_object_get_object(o, eps[e]);
+            const char *id = ep ? json_object_dotget_string(ep, "browseEndpoint.browseId") : NULL;
+            if (!id || strncmp(id, "UC", 2) || strlen(id) != 24) continue;
+            if (find_str(v, "videoId", 0)) break;            /* a video tile's "go to channel": its text is the video's */
+            const char *t = ch_title(o);
+            bool dup = false; for (int i = 0; i < *n; i++) if (!strcmp(out[i].channel_id, id)) dup = true;
+            if (t && *t && !dup && *n < max) {
+                memset(&out[*n], 0, sizeof(out[0]));
+                snprintf(out[*n].channel_id, sizeof(out[0].channel_id), "%s", id);
+                snprintf(out[*n].channel, sizeof(out[0].channel), "%s", t); snprintf(out[*n].title, sizeof(out[0].title), "%s", t);
+                (*n)++;
+            }
+            return;
+        }
+        for (size_t i = 0; i < json_object_get_count(o); i++) ch_walk(json_object_get_value_at(o, i), out, n, max, depth + 1);
+        return;
+    }
+    JSON_Array *a = json_value_get_array(v);
+    for (size_t i = 0; a && i < json_array_get_count(a); i++) ch_walk(json_array_get_value(a, i), out, n, max, depth + 1);
+}
+static void ch_ids(JSON_Value *v, char *out, size_t n, int *k, int depth) {   /* which pages an answer links to (for the log) */
+    if (depth > 40 || *k >= 8) return;
+    JSON_Object *o = json_value_get_object(v);
+    if (o) {
+        const char *b = json_object_get_string(o, "browseId");
+        if (b && !strstr(out, b) && strlen(out) + strlen(b) + 2 < n) { strcat(out, b); strcat(out, " "); (*k)++; }
+        for (size_t i = 0; i < json_object_get_count(o); i++) ch_ids(json_object_get_value_at(o, i), out, n, k, depth + 1);
+        return;
+    }
+    JSON_Array *a = json_value_get_array(v);
+    for (size_t i = 0; a && i < json_array_get_count(a); i++) ch_ids(json_array_get_value(a, i), out, n, k, depth + 1);
+}
+static void ch_fetch(void) {
+    static VideoItem tmp[400]; int n = 0; char err[200] = "";
+    static const char *pages[] = {"FEchannels", "FEsubscriptions"};
+    for (int p = 0; p < 2 && !n; p++) {
+        char extra[80]; snprintf(extra, sizeof(extra), "\"browseId\":\"%s\"", pages[p]);
+        JSON_Value *v = tv_call("browse", extra, err, sizeof(err));
+        if (v) ch_walk(v, tmp, &n, 400, 0);
+        Log_msg("account channels %s: %s, %d channels%s%s", pages[p], v ? "ok" : err, n, n ? ", first: " : "", n ? tmp[0].channel : "");
+        if (v && !n) { char ids[400] = ""; int k = 0; ch_ids(v, ids, sizeof(ids), &k, 0); Log_msg("account channels %s links to: %s", pages[p], ids[0] ? ids : "(nothing)"); }
+        json_value_free(v);
+    }
+    pthread_mutex_lock(&wlock);
+    memcpy(ch_found, tmp, sizeof(tmp[0]) * n); ch_n = n; ch_ready = n > 0;
+    pthread_mutex_unlock(&wlock);
 }
 static void do_job(int kind, const char *id, double pos, double dur, bool paused, bool on) {
     char err[300] = "", extra[480];
@@ -738,23 +841,23 @@ static void do_job(int kind, const char *id, double pos, double dur, bool paused
          * answers it without them (it may ask the TV player for more checks), the ones from the
          * normal stream answer are used: the pings count for whoever sends the account token */
         const char *live = tv_live_version();
-        const char *clients[4][3] = {{"TVHTML5_SAMSUNG", "5.20260707", TV_NAME_ID}, {"TVHTML5", live, TV_NAME_ID}, {"TVHTML5", TV_VERSION, TV_NAME_ID}, {"TVHTML5_SIMPLY_EMBEDDED_PLAYER", "2.0", "85"}};
+        const char *clients[5][3] = {{"TVHTML5_SAMSUNG", "5.20260707", TV_NAME_ID}, {"TVHTML5_SAMSUNG_ACC", "5.20260707", TV_NAME_ID}, {"TVHTML5", live, TV_NAME_ID}, {"TVHTML5", TV_VERSION, TV_NAME_ID}, {"TVHTML5_SIMPLY_EMBEDDED_PLAYER", "2.0", "85"}};
         static int good = -1;   /* the client that answered last time is asked first */
-        snprintf(w_vid, sizeof(w_vid), "%s", id); new_cpn(); w_last_et = 0; w_play[0] = w_time[0] = 0;
+        snprintf(w_vid, sizeof(w_vid), "%s", id); new_cpn(); w_last_et = 0; w_play[0] = w_time[0] = 0; w_samsung = false;
         int sts0 = sts_get();
         Log_msg("account history %s: signatureTimestamp %d", id, sts0);
-        for (int k = -1; k < 4 && !w_play[0]; k++) {
+        for (int k = -1; k < 5 && !w_play[0]; k++) {
             int c = k < 0 ? good : k;
             if (c < 0 || (k >= 0 && c == good)) continue;
-            if (c == 2 && !strcmp(live, TV_VERSION)) continue;
+            if (c == 3 && !strcmp(live, TV_VERSION)) continue;
             char stsp[48] = ""; if (sts0 > 0) snprintf(stsp, sizeof(stsp), ",\"signatureTimestamp\":%d", sts0);
             snprintf(extra, sizeof(extra), "\"videoId\":\"%s\",\"contentCheckOk\":true,\"racyCheckOk\":true,\"playbackContext\":{\"contentPlaybackContext\":{\"html5Preference\":\"HTML5_PREF_WANTS\"%s}}", id, stsp);
             err[0] = 0;
-            JSON_Value *v = c == 2 ? tv_call("player", extra, err, sizeof(err)) : tv_call_as(clients[c][0], clients[c][1], clients[c][2], "player", extra, err, sizeof(err));
+            JSON_Value *v = c == 3 ? tv_call("player", extra, err, sizeof(err)) : tv_call_as(clients[c][0], clients[c][1], clients[c][2], "player", extra, err, sizeof(err));
             JSON_Object *o = json_value_get_object(v);
             const char *p = json_object_dotget_string(o, "playbackTracking.videostatsPlaybackUrl.baseUrl");
             const char *t = json_object_dotget_string(o, "playbackTracking.videostatsWatchtimeUrl.baseUrl");
-            if (p) { snprintf(w_play, sizeof(w_play), "%s", p); good = c; Log_msg("account history %s: tracking from %s %s", id, clients[c][0], clients[c][1]); }
+            if (p) { snprintf(w_play, sizeof(w_play), "%s", p); good = c; w_samsung = c <= 1; w_t0 = SDL_GetTicks(); Log_msg("account history %s: tracking from %s %s", id, clients[c][0], clients[c][1]); }
             if (t) snprintf(w_time, sizeof(w_time), "%s", t);
             if (!p) Log_msg("account history %s: %s %s player has no tracking (%s %s)", id, clients[c][0], clients[c][1],
                             v ? json_object_dotget_string(o, "playabilityStatus.status") ? json_object_dotget_string(o, "playabilityStatus.status") : "?" : "error",
@@ -765,7 +868,12 @@ static void do_job(int kind, const char *id, double pos, double dur, bool paused
         if (!w_play[0]) { Log_msg("account history %s: no tracking URLs at all", id); return; }
         snprintf(extra, sizeof(extra), "&cmt=%.3f&len=%.3f", pos, dur);
         ping(w_play, extra);
-        Log_msg("account history: %s marked watched", id);
+        w_pings = 0;
+        {   /* which parameters YouTube put in the tracking address (names only) */
+            char keys[300] = ""; size_t kn = 0;
+            for (const char *q = strchr(w_play, '?'); q && *q && kn + 40 < sizeof(keys); ) { const char *k = q + 1, *e = strchr(k, '='); if (!e) break; kn += snprintf(keys + kn, sizeof(keys) - kn, "%.*s ", (int)(e - k > 20 ? 20 : e - k), k); q = strchr(e, '&'); }
+            Log_msg("account history: %s marked watched (%.40s… keys: %s)", id, w_play, keys);
+        }
     } else if (kind == WJ_TIME) {
         if (strcmp(id, w_vid) || !w_time[0]) return;
         double st = w_last_et < pos ? w_last_et : pos;
@@ -782,10 +890,13 @@ static void do_job(int kind, const char *id, double pos, double dur, bool paused
         JSON_Value *v = tv_call("next", extra, err, sizeof(err));
         const char *st = v ? find_str(v, "likeStatus", 0) : NULL;
         pthread_mutex_lock(&wlock);
-        if (!strcmp(ls_id, id)) ls_val = st ? (!strcmp(st, "LIKE") ? 1 : 0) : -2;
+        int sub = v ? find_bool(v, "subscribed", 0) : -1;
+        if (!strcmp(ls_id, id)) { ls_val = st ? (!strcmp(st, "LIKE") ? 1 : 0) : -2; ls_sub = sub; }
         pthread_mutex_unlock(&wlock);
-        Log_msg("account like state %s: %s", id, st ? st : (v ? "not in answer" : err));
+        Log_msg("account like state %s: %s, channel %s", id, st ? st : (v ? "not in answer" : err), sub == 1 ? "subscribed" : sub == 0 ? "not subscribed" : "unknown");
         json_value_free(v);
+    } else if (kind == WJ_CHANS) {
+        ch_fetch();
     } else if (kind == WJ_SUB) {
         snprintf(extra, sizeof(extra), "\"channelIds\":[\"%s\"],\"params\":\"EgIIAhgA\"", id);
         JSON_Value *v = tv_call(on ? "subscription/subscribe" : "subscription/unsubscribe", extra, err, sizeof(err));
@@ -824,13 +935,25 @@ void Account_watchStart(const char *id, double pos, double dur, const char *trac
 }
 void Account_watchTime(const char *id, double pos, double dur, bool paused) { queue_job(WJ_TIME, id, pos, dur, paused, true); }
 void Account_like(const char *id, bool on) { queue_job(WJ_LIKE, id, 0, 0, false, on); }
+void Account_channelsFetch(void) { queue_job(WJ_CHANS, "channels", 0, 0, false, false); }
+int Account_channelsTake(VideoItem *out, int max) {
+    pthread_mutex_lock(&wlock);
+    int n = 0;
+    if (ch_ready) { n = ch_n < max ? ch_n : max; memcpy(out, ch_found, sizeof(out[0]) * n); ch_ready = false; }
+    pthread_mutex_unlock(&wlock);
+    return n;
+}
 void Account_subscribe(const char *channel_id, bool on) { queue_job(WJ_SUB, channel_id, 0, 0, false, on); }
 void Account_likeStateFetch(const char *id) {
-    pthread_mutex_lock(&wlock); snprintf(ls_id, sizeof(ls_id), "%s", id ? id : ""); ls_val = -1; pthread_mutex_unlock(&wlock);
+    pthread_mutex_lock(&wlock); snprintf(ls_id, sizeof(ls_id), "%s", id ? id : ""); ls_val = -1; ls_sub = -1; pthread_mutex_unlock(&wlock);
     queue_job(WJ_LSTATE, id, 0, 0, false, true);
 }
 int Account_likeState(const char *id) {   /* -1 not known yet, -2 unknown, 0 not liked, 1 liked */
     pthread_mutex_lock(&wlock); int v = id && !strcmp(id, ls_id) ? ls_val : -2; pthread_mutex_unlock(&wlock);
+    return v;
+}
+int Account_subStateTake(const char *id) {   /* 1 / 0 once when known for this video, else -1 */
+    pthread_mutex_lock(&wlock); int v = id && !strcmp(id, ls_id) ? ls_sub : -1; if (v >= 0) ls_sub = -1; pthread_mutex_unlock(&wlock);
     return v;
 }
 void Account_likeSet(const char *id, bool on) { pthread_mutex_lock(&wlock); if (id && !strcmp(id, ls_id)) ls_val = on; pthread_mutex_unlock(&wlock); }

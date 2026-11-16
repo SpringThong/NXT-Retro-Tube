@@ -185,7 +185,8 @@ static struct {
     unsigned sponsorDone; Uint32 sponsorToastAt;
     int panelFirst;             /* first visible row of a long panel */
     int fDate, fDur, fSort; bool fLive;   /* search filters */
-    int ncJob, ncIdx;
+    int ncJob, ncIdx, ncRound;
+    char subLocalId[40]; Uint32 subLocalAt;   /* channel just (un)subscribed here: the account's answer lags a few minutes */
     /* 2.4.1 */
     bool loungePanel; char loungeCode[32], loungeMsg[200]; int loungeState; double loungeSeek; Uint32 loungeReportAt; int loungeLastState;
     char accWatchId[16]; Uint32 accPingAt; bool accStarted; int accLastState;
@@ -1081,17 +1082,20 @@ static void newvideo_tick(Uint32 now) {
             }
         }
         VideoList_clear(&l); Yt_forget(A.ncJob); A.ncJob = 0;
-        A.ncIdx++; A.ncNext = now + 1500;   /* gently, one channel at a time */
+        A.ncIdx++; A.ncRound++; A.ncNext = now + 1500;   /* gently, one channel at a time */
         return;
     }
     static bool started;
     if (!started) { started = true; A.ncNext = now + 60000; return; }   /* first round a minute after start */
     if ((Sint32)(now - A.ncNext) < 0) return;
     const VideoList *ch = Store_channels();
-    if (A.ncIdx >= ch->count || !ch->count) {
-        if (A.ncIdx && A.ncNew > 0 && S.newbadge) toast("Có %d video mới từ kênh bạn theo dõi · xem ở tab Kênh", A.ncNew);
-        if (A.ncIdx) { nc_save(); A.ncNew = 0; }
-        A.ncIdx = 0; A.ncNext = now + (S.autodl ? 30 : 120) * 60000u;   /* every 2 h (30 min when auto-download is on) */
+    /* a long list (an account's subscriptions) is checked 40 channels a round, carrying on next round:
+     * a few minutes of light work every 2 h however many channels there are */
+    if (A.ncIdx >= ch->count || !ch->count || A.ncRound >= 40) {
+        if (A.ncRound && A.ncNew > 0 && S.newbadge) toast("Có %d video mới từ kênh bạn theo dõi · xem ở tab Kênh", A.ncNew);
+        if (A.ncRound) { nc_save(); A.ncNew = 0; }
+        if (A.ncIdx >= ch->count) A.ncIdx = 0;
+        A.ncRound = 0; A.ncNext = now + (S.autodl ? 30 : 120) * 60000u;   /* every 2 h (30 min when auto-download is on) */
         return;
     }
     SysStatus ss; Sys_status(&ss);
@@ -1233,7 +1237,7 @@ static void run_option(int i) {
         case 3: toast(Store_toggleLater(&A.cur) ? "Đã thêm vào Xem sau" : "Đã bỏ khỏi Xem sau"); Store_save(); A.panel = PANEL_NONE; break;
         case 4: if (!A.cur.channel_id[0]) { toast("Không rõ kênh của video này"); break; }
             { bool on = Store_toggleChannel(&A.cur);
-              if (Account_signedIn()) { Account_subscribe(A.cur.channel_id, on); toast(on ? "Đã đăng ký %s (cả tài khoản Google)" : "Đã hủy đăng ký %s (cả tài khoản Google)", A.cur.channel); }
+              if (Account_signedIn()) { Account_subscribe(A.cur.channel_id, on); snprintf(A.subLocalId, sizeof(A.subLocalId), "%s", A.cur.channel_id); A.subLocalAt = SDL_GetTicks(); toast(on ? "Đã đăng ký %s (cả tài khoản Google)" : "Đã hủy đăng ký %s (cả tài khoản Google)", A.cur.channel); }
               else toast(on ? "Đã theo dõi %s" : "Đã bỏ theo dõi %s", A.cur.channel); }
             Store_save(); A.panel = PANEL_NONE; break;
 
@@ -2356,7 +2360,7 @@ static void setting_text(int row, char *label, size_t ln, char *value, size_t vn
             snprintf(label, ln, "%s", T("Bộ chỉnh âm (EQ)")); snprintf(value, vn, "%s", T(m[S.eq]));
             snprintf(note, nn, "%s", T("Kiểu âm có sẵn cho loa, tai nghe, DAC · có chống vỡ tiếng · nhẹ máy")); break; }
         case SET_ACCHIST: snprintf(label, ln, "%s", T("Gửi lịch sử xem về tài khoản")); snprintf(value, vn, "%s", T(onoff[S.acc_history]));
-            snprintf(note, nn, "%s", T("Đã đăng nhập: video xem trên máy hiện trong lịch sử YouTube và mục Xem tiếp trên điện thoại / web")); break;
+            snprintf(note, nn, "%s", T("Máy gửi như app YouTube trên TV · hiện YouTube ghi chưa ổn định, có thể không thấy trên điện thoại")); break;
         case SET_LOUNGE: { char who[64]; int nr = Lounge_remotes(who, sizeof(who));
             snprintf(label, ln, "%s", T("Điều khiển bằng điện thoại"));
             snprintf(value, vn, "%s", !S.lounge ? T("Tắt") : nr ? T("Đã kết nối") : T("Đang chờ"));
@@ -3639,6 +3643,22 @@ static void update(void) {
         else if (st.audio_only && S.autoplay && !A.cur.live) start_radio(true);   /* music mode: endless, like YouTube Music */
     }
     radio_poll();
+    if (A.hasCur && A.cur.channel_id[0] && Account_signedIn() && !K.enabled) {   /* the video's channel is subscribed on the account: follow it here too */
+        int sub = Account_subStateTake(A.cur.id);
+        if (sub >= 0 && A.subLocalAt && !strcmp(A.subLocalId, A.cur.channel_id) && SDL_GetTicks() - A.subLocalAt < 10 * 60 * 1000) sub = -1;   /* just changed here: keep it */
+        if (sub == 1 && A.cur.channel_id[0] && !Store_isChannel(A.cur.channel_id) && Store_toggleChannel(&A.cur)) { Store_save(); Log_msg("account: %s is subscribed on Google, now followed here", A.cur.channel); }
+        else if (sub == 0 && Store_isChannel(A.cur.channel_id)) {   /* unsubscribed on a phone / computer: the account decides, as with likes */
+            Store_toggleChannel(&A.cur); Store_save(); Log_msg("account: %s is not subscribed on Google, unfollowed here", A.cur.channel);
+            toast("Đã hủy đăng ký %s trên tài khoản Google · bỏ theo dõi trên máy", A.cur.channel);
+        }
+    }
+    {   /* channels subscribed on a phone / computer join the Channels tab (asked at start, then every 30 min) */
+        static Uint32 nextAsk; static VideoItem got[400]; Uint32 now = SDL_GetTicks();
+        if (Account_signedIn() && !K.enabled && (!nextAsk || now > nextAsk)) { Account_channelsFetch(); nextAsk = now + 30 * 60 * 1000; }
+        int n = Account_channelsTake(got, 400), added = 0;
+        for (int i = n - 1; i >= 0; i--) if (!Store_isChannel(got[i].channel_id) && Store_toggleChannel(&got[i])) added++;
+        if (added) { Store_save(); Log_msg("account channels: %d new from the Google account", added); toast("Đã thêm %d kênh đăng ký từ tài khoản Google", added); }
+    }
     /* Library → Đã thích (Google): the account's Liked videos, liked anywhere; refreshed every 5 min or after a like here */
     if (A.likedJob) {
         JobState js = Yt_state(A.likedJob);
@@ -3652,7 +3672,9 @@ static void update(void) {
         A.likedJob = Yt_searchPage("@yt:VLLL", 0, 200, false, true); A.likedDirty = false;
     }
     /* your Google account: history + where you stopped (any device can continue) */
-    if (A.hasCur && Account_signedIn() && S.acc_history && !st.live && st.duration > 0 && !K.enabled) {
+    /* watch history to the account, sent the way the Samsung TV app does. YouTube takes the reports but
+     * (11/2026) files them only now and then; kept as it is in case that changes on their side. */
+    if (ACC_SEND_HISTORY && A.hasCur && Account_signedIn() && S.acc_history && !st.live && st.duration > 0 && !K.enabled) {
         if (strcmp(A.accWatchId, A.cur.id)) { snprintf(A.accWatchId, sizeof(A.accWatchId), "%s", A.cur.id); A.accStarted = false; A.accPingAt = now + 4000; }
         int sst = st.state == PS_PLAYING ? 1 : st.state == PS_PAUSED ? 2 : 0;
         if (!A.accStarted && st.state == PS_PLAYING && (Sint32)(now - A.accPingAt) >= 0) { Account_watchStart(A.cur.id, st.position, st.duration, A.streamReady ? A.stream.track_pb : "", A.streamReady ? A.stream.track_wt : ""); A.accStarted = true; A.accPingAt = now + 20000; }

@@ -603,7 +603,7 @@ static const char *const PAIRS[][2] = {
     {"Bộ chỉnh âm (EQ)", "Equalizer (EQ)"},
     {"Kiểu âm có sẵn cho loa, tai nghe, DAC · có chống vỡ tiếng · nhẹ máy", "Presets for speaker, headphones, DAC · limiter against distortion · light on the CPU"},
     {"Gửi lịch sử xem về tài khoản", "Send watch history to the account"},
-    {"Đã đăng nhập: video xem trên máy hiện trong lịch sử YouTube và mục Xem tiếp trên điện thoại / web", "Signed in: what you watch here shows in your YouTube history and Continue watching on phone / web"},
+    {"Máy gửi như app YouTube trên TV · hiện YouTube ghi chưa ổn định, có thể không thấy trên điện thoại", "Sent the way the YouTube TV app does · YouTube records it unreliably for now, it may not show on your phone"},
     {"Điều khiển bằng điện thoại", "Phone remote"},
     {"Đã kết nối", "Connected"},
     {"Đang chờ", "Waiting"},
