@@ -46,7 +46,7 @@ static Uint32 repeat_at[K_COUNT];
 /* ---------- state ---------- */
 typedef enum { SC_HOME, SC_SEARCH, SC_WATCH, SC_FULL, SC_LIBRARY, SC_SETTINGS, SC_KIDS } Screen;
 typedef enum { PANEL_NONE, PANEL_QUALITY, PANEL_SPEED, PANEL_OPTIONS, PANEL_DOWNLOAD, PANEL_PLAYLIST, PANEL_CHAPTERS, PANEL_FILTER } Panel;
-/* Home tabs ("chips"): a catalog the user can reorder / hide (Cài đặt → Tùy biến), plus up to 4 tabs
+/* Home tabs ("chips"): a catalog the user can reorder / hide (Cài đặt › Tùy biến), plus up to 4 tabs
  * of their own keywords. A.tab is the position in the visible row; chip_ids[] maps it to the catalog. */
 enum { CH_FORYOU, CH_SUBS, CH_CONT, CH_MUSIC, CH_RETRO, CH_CHILL, CH_CARTOON, CH_LIVE, CH_FOOTBALL, CH_NEW, CH_CUSTOM0, CH_N = CH_CUSTOM0 + 4 };
 static const char *CHIPDEF_LABEL[CH_CUSTOM0] = {"Dành cho bạn", "Đăng ký", "Xem tiếp", "Âm nhạc", "Game retro", "Chill & Lofi", "Hoạt hình", "Trực tiếp", "Bóng đá", "Mới tải lên"};
@@ -123,10 +123,11 @@ enum { SET_LANG, SET_THEME, SET_QUALITY, SET_AUTOPLAY, SET_PREFETCH, SET_SAVER, 
 #else
 #define SET_ROWS SET_ICON
 #endif
+#define HELP_N 8   /* sections of the controls guide */
 /* Cài đặt: groups of rows (2.3.13) */
-enum { G_ACCOUNT, G_PLAY, G_AUDIO, G_SUBS, G_UI, G_STORAGE, G_SYSTEM, G_KIDS, G_ABOUT, G_N };
-static const char *GROUP_LABEL[G_N] = {"Tài khoản & kênh", "Phát video", "Âm thanh", "Phụ đề", "Giao diện", "Tải về & bộ nhớ", "Pin, phím & hệ thống", "Chế độ trẻ em", "Cập nhật & giới thiệu"};
-static const char *GROUP_ICON[G_N] = {"users", "play", "headphones", "captions", "sliders-horizontal", "download", "gauge", "house", "thumbs-up"};
+enum { G_ACCOUNT, G_PLAY, G_AUDIO, G_SUBS, G_UI, G_STORAGE, G_SYSTEM, G_KIDS, G_ABOUT, G_HELP, G_N };
+static const char *GROUP_LABEL[G_N] = {"Tài khoản & kênh", "Phát video", "Âm thanh", "Phụ đề", "Giao diện", "Tải về & bộ nhớ", "Pin, phím & hệ thống", "Chế độ trẻ em", "Cập nhật & giới thiệu", "Hướng dẫn phím"};
+static const char *GROUP_ICON[G_N] = {"users", "play", "headphones", "captions", "sliders-horizontal", "download", "gauge", "house", "thumbs-up", "list-video"};
 static const int GROUP_ROWS[G_N][8] = {
     {SET_ACCOUNT, SET_ACCHIST, SET_LOUNGE, SET_IMPORT, SET_NEWBADGE, SET_AUTODL, -1},
     {SET_QUALITY, SET_AUTOPLAY, SET_PREFETCH, SET_FPS60, SET_SPONSOR, SET_SLEEP_ACT, -1},
@@ -137,6 +138,7 @@ static const int GROUP_ROWS[G_N][8] = {
     {SET_SAVER, SET_KEYS, SET_ICON, -1},
     {SET_KIDS, -1},
     {SET_UPDATE, SET_OTA_AUTO, SET_VERSION, SET_ABOUT, -1},
+    {-1},   /* G_HELP: a page of its own */
 };
 static int group_rows(int g, int *ids) {
     int n = 0;
@@ -170,6 +172,7 @@ static struct {
     /* settings */
     bool loginPanel; int loginState, loginSecs; char loginCode[32], loginUrl[160], loginMsg[200];
     bool custPage; int custSel; float custScroll; int textFor;   /* textFor: keyboard types 1 the app title, 2..5 a keyword tab */
+    bool helpPage; int helpSec; float helpScroll, helpWant; int helpMax;   /* Cài đặt › Hướng dẫn phím */
     int setGroup, groupSel;   /* settings: -1 = the list of groups, else inside that group */
     int setSel; float setScroll; bool keyPage; int keySelRow; int capture; Uint32 captureUntil; int confirmRow; Uint32 confirmUntil;
     char iconStatus[160]; int iconState;
@@ -177,6 +180,7 @@ static struct {
     VideoItem cur; bool hasCur;
     StreamInfo stream; bool streamReady; int resolveJob; char watchErr[160];
     VideoList queue; int qpos;
+    bool panelDirect;   /* the open panel came from a button beside the player, not from the SELECT menu */
     int btnSel;   /* watch page, focus 2: 0 follow, 1 later, 2 download, 3 quality, 4 speed */
     int watchFocus, nextSel, nextFirst, moreJob, moreStart; char moreQuery[300]; bool moreDone; int moreEmpty; Uint32 moreFailedAt;
     int quality, speedIx;
@@ -196,7 +200,7 @@ static struct {
     /* 2.4.1 */
     bool loungePanel; char loungeCode[32], loungeMsg[200]; int loungeState; double loungeSeek; Uint32 loungeReportAt; int loungeLastState;
     char accWatchId[16]; Uint32 accPingAt; bool accStarted; int accLastState;
-    VideoList likedList; int likedJob; Uint32 likedAt; bool likedDirty;   /* Library → Đã thích (the Google account's Liked videos) */
+    VideoList likedList; int likedJob; Uint32 likedAt; bool likedDirty;   /* Library › Đã thích (the Google account's Liked videos) */
     int radioJob; bool radioThenNext; bool fMusic; Uint32 ncNext; int ncNew; int autodlToday, autodlDay;
     /* overlays */
     bool osd; Uint32 osdUntil; Panel panel; int panelSel; bool stats;
@@ -896,7 +900,7 @@ static void go_section(int s) {
         case 3: A.screen = SC_LIBRARY; if (A.libTab == 2) A.libTab = 0; A.libSel = 0; A.lscroll = 0; break;
         case 4:
             if (K.enabled && !A.settingsUnlocked) { pin_open(PIN_SETTINGS); break; }
-            A.screen = SC_SETTINGS; A.keyPage = false; A.custPage = false; A.capture = -1; icon_state(); break;
+            A.screen = SC_SETTINGS; A.keyPage = false; A.custPage = false; A.helpPage = false; A.capture = -1; icon_state(); break;
     }
     (void)0;
     if ((s + 5) % 5 != 4) A.settingsUnlocked = false;
@@ -1354,7 +1358,7 @@ static void panel_key(Key k) {
     if (A.panel == PANEL_DOWNLOAD || A.panel == PANEL_PLAYLIST || A.panel == PANEL_CHAPTERS) {
         if (k == K_UP) A.panelSel = (A.panelSel + count - 1) % count;
         else if (k == K_DOWN) A.panelSel = (A.panelSel + 1) % count;
-        else if (k == K_B) A.panel = PANEL_OPTIONS;
+        else if (k == K_B) A.panel = A.panelDirect ? PANEL_NONE : PANEL_OPTIONS;   /* opened by a button beside the player: B just closes */
         else if (k == K_A && A.panel == PANEL_DOWNLOAD) {
             int kind = A.panelSel;
             if (kind <= DL_VIDEO_MP4 && Store_hasDownload(A.cur.id) && access(Store_downloadPath(A.cur.id, false), F_OK) == 0) {
@@ -1416,7 +1420,7 @@ static void playback_key(Key k) {
     }
     else if (k == K_X) open_panel(PANEL_QUALITY);
     else if (k == K_START) open_panel(PANEL_SPEED);
-    else if (k == K_SELECT) open_panel(PANEL_OPTIONS);
+    else if (k == K_SELECT) { open_panel(PANEL_OPTIONS); A.panelDirect = false; }
 }
 
 /* ---------- settings ---------- */
@@ -1605,11 +1609,20 @@ static void settings_key(Key k) {
         else if (k == K_B) A.keyPage = false;
         return;
     }
+    if (A.helpPage) {
+        if (k == K_L1 || k == K_LEFT) { A.helpSec = (A.helpSec + HELP_N - 1) % HELP_N; A.helpWant = A.helpScroll = 0; }
+        else if (k == K_R1 || k == K_RIGHT) { A.helpSec = (A.helpSec + 1) % HELP_N; A.helpWant = A.helpScroll = 0; }
+        else if (k == K_UP) { A.helpWant -= 120; if (A.helpWant < 0) A.helpWant = 0; }
+        else if (k == K_DOWN) { A.helpWant += 120; if (A.helpWant > A.helpMax) A.helpWant = (float)A.helpMax; }
+        else if (k == K_B) A.helpPage = false;
+        return;
+    }
     if (A.setGroup < 0) {   /* the list of groups */
         if (k == K_UP && A.groupSel > 0) A.groupSel--;
         else if (k == K_DOWN && A.groupSel < G_N - 1) A.groupSel++;
         else if (k == K_A || k == K_RIGHT) {
             if (A.groupSel == G_KIDS) { setting_action(SET_KIDS); return; }   /* parents' page (asks for the PIN) */
+            if (A.groupSel == G_HELP) { A.helpPage = true; A.helpSec = 0; A.helpWant = A.helpScroll = 0; return; }
             A.setGroup = A.groupSel; A.setSel = 0; A.setScroll = 0;
         }
         else if (k == K_B) { A.screen = SC_HOME; A.focus = 0; A.settingsUnlocked = false; }
@@ -1625,7 +1638,7 @@ static void settings_key(Key k) {
     else if (k == K_A && id >= 0) setting_action(id);
     else if (k == K_L1 || k == K_R1) {   /* next / previous group without going back */
         int g = A.setGroup;
-        do g = (g + (k == K_R1 ? 1 : G_N - 1)) % G_N; while (g == G_KIDS);
+        do g = (g + (k == K_R1 ? 1 : G_N - 1)) % G_N; while (g == G_KIDS || g == G_HELP);
         A.setGroup = A.groupSel = g; A.setSel = 0; A.setScroll = 0;
     }
     else if (k == K_B) { A.groupSel = A.setGroup; A.setGroup = -1; }
@@ -1802,7 +1815,7 @@ static void handle_key(Key k) {
     }
     if (A.panel && (A.screen == SC_WATCH || A.screen == SC_FULL || (A.screen == SC_SEARCH && A.panel == PANEL_FILTER))) { panel_key(k); return; }
     /* L2/R2 move between the main sections everywhere except while watching */
-    if ((k == K_L2 || k == K_R2) && A.screen != SC_WATCH && A.screen != SC_FULL && !(A.screen == SC_SETTINGS && (A.keyPage || A.custPage)) && !A.textFor) {
+    if ((k == K_L2 || k == K_R2) && A.screen != SC_WATCH && A.screen != SC_FULL && !(A.screen == SC_SETTINGS && (A.keyPage || A.custPage || A.helpPage)) && !A.textFor) {
         go_section(current_section() + (k == K_R2 ? 1 : -1));
         return;
     }
@@ -1880,7 +1893,7 @@ static void handle_key(Key k) {
     case SC_KIDS: kids_key(k); return;
     case SC_SEARCH: {
         if (A.textFor) {
-            /* typing the app title or a keyword tab (Cài đặt → Tùy biến) */
+            /* typing the app title or a keyword tab (Cài đặt › Tùy biến) */
             bool go = k == K_START || (k == K_A && !strcmp(KEYS[A.keySel], "go"));
             if (go || (k == K_B && !A.raw[0])) {
                 if (A.textFor == 6) {   /* new playlist from the watch screen */
@@ -1982,7 +1995,7 @@ static void handle_key(Key k) {
             static const int ids[5] = {4, 3, OPT_DOWNLOAD, 0, 1};
             int s = A.btnSel, nn = A.queue.count - A.qpos - 1;
             if (k == K_B) { A.watchFocus = 0; return; }
-            if (k == K_A) { run_opt(ids[s]); return; }
+            if (k == K_A) { run_opt(ids[s]); A.panelDirect = true; return; }
             if (k == K_UP) { if (s >= 3) A.btnSel = s - 2; else if (s) A.btnSel = 0; return; }
             if (k == K_DOWN) { if (s == 0) A.btnSel = 2; else if (s <= 2) A.btnSel = s + 2; else if (nn > 0) { A.watchFocus = 1; A.nextSel = 0; } return; }
             if (k == K_LEFT) { if (s == 2 || s == 4) A.btnSel = s - 1; else A.watchFocus = 0; return; }
@@ -2034,9 +2047,9 @@ static void draw_logo(int x, int y) {
 static void draw_stripes(int y) { D_rect(0, y, SCREEN_W, 2, C_TOMATO); D_rect(0, y + 2, SCREEN_W, 2, C_MUSTARD); D_rect(0, y + 4, SCREEN_W, 2, C_INK); }
 
 /* a channel's real picture as a disc, when the Google account told us where it is; false = draw the initials */
-static bool draw_avatar(const char *cid, int cx, int cy, int r, SDL_Color bg) {
+static bool draw_avatar(const char *cid, const char *name, int cx, int cy, int r, SDL_Color bg) {
     char key[16];
-    if (!Account_avatarKey(cid, key)) return false;
+    if (!Account_avatarKey(cid, name, key)) return false;
     SDL_Texture *t = Thumbs_get(key);
     if (!t) return false;
     SDL_Rect q = {cx - r, cy - r, 2 * r, 2 * r};
@@ -2055,7 +2068,7 @@ static void draw_card(int x, int y, int w, const VideoItem *v, bool selected, do
         D_round(tr.x, tr.y, tr.w, tr.h, 12, C_BAR); D_roundRing(tr.x, tr.y, tr.w, tr.h, 12, 2, C_BLACK);
         int r = 52, cx = tr.x + tr.w / 2, cy = tr.y + tr.h / 2;
         D_circle(cx + 6, cy + 6, r, C_BLACK);
-        if (!draw_avatar(v->channel_id, cx, cy, r, C_BAR)) {
+        if (!draw_avatar(v->channel_id, v->title, cx, cy, r, C_BAR)) {
             D_circle(cx, cy, r, avatar_color(v->title)); D_ring(cx, cy, r, 3, C_BLACK);
             char ini[16]; initials(v->title, ini); D_text(F_XBOLD, 34, ini, cx, cy - D_fontHeight(F_XBOLD, 34) / 2, C_INK, 0, AL_CENTER);
         }
@@ -2084,7 +2097,7 @@ static void draw_card(int x, int y, int w, const VideoItem *v, bool selected, do
     if (!channel_card) {
         SDL_Color ac = avatar_color(v->channel);
         D_circle(x + 30, ty + 20, 20, C_BLACK);
-        if (!draw_avatar(v->channel_id, x + 30, ty + 20, 19, bg)) {
+        if (!draw_avatar(v->channel_id, v->channel, x + 30, ty + 20, 19, bg)) {
             D_circle(x + 30, ty + 20, 18, ac);
             char ini[16]; initials(v->channel, ini); D_text(F_XBOLD, 15, ini, x + 30, ty + 20 - D_fontHeight(F_XBOLD, 15) / 2, C_INK, 0, AL_CENTER);
         }
@@ -2298,7 +2311,7 @@ static void draw_strip(bool focused) {
         } else {
             const VideoItem *c = &ch->items[strip_idx[i]];
             D_circle(cx + 3, cy + 3, 28, C_BLACK);
-            if (!draw_avatar(c->channel_id, cx, cy, 28, on ? C_RAISED : C_BG)) {
+            if (!draw_avatar(c->channel_id, c->title, cx, cy, 28, on ? C_RAISED : C_BG)) {
                 D_circle(cx, cy, 28, avatar_color(c->title)); D_ring(cx, cy, 28, 2, C_BLACK);
                 initials(c->title, ini); D_text(F_XBOLD, 20, ini, cx, cy - D_fontHeight(F_XBOLD, 20) / 2, C_INK, 0, AL_CENTER);
             }
@@ -2717,29 +2730,123 @@ static void group_summary(int g, char *out, size_t n) {
             else if (st == OTA_READY) snprintf(out, n, "%s", T("Đã tải bản mới · khởi động lại"));
             else snprintf(out, n, "NXT Retro Tube %s · %s", APP_VERSION, APP_AUTHOR);
             break; }
+        case G_HELP: snprintf(out, n, "%s", T("Phím ở từng màn hình · thao tác bấm 2 lần, 3 lần")); break;
     }
 }
+/* ---------- 2.7 "Hướng dẫn phím": what every key does on each screen ---------- */
+typedef struct { const char *keys, *text; } HelpRow;
+static const HelpRow HELP_0[] = {
+    {"D-pad", "Chọn video"},
+    {"A", "Xem video đang chọn"},
+    {"X", "Thêm / bỏ Xem sau"},
+    {"Y", "Tìm kiếm"},
+    {"L1 R1", "Đổi tab (Dành cho bạn, Đăng ký, Xem tiếp…)"},
+    {"L2 R2", "Đổi mục chính: Trang chủ · Tìm kiếm · Kênh · Thư viện · Cài đặt"},
+    {"START", "Làm mới tab đang xem"},
+    {"SELECT", "Mở lại video đang phát"},
+    {"B", "Thoát app · đang phát thì hỏi Nghe nền hay Thoát"},
+    {"Lên", "Ở tab Đăng ký: lên hàng kênh › Trái/Phải chọn kênh, A mở kênh"},
+    {NULL, NULL}};
+static const HelpRow HELP_1[] = {
+    {"A", "Phát / dừng"},
+    {"Trái Phải", "Tua 10 giây (bấm nhanh nhiều lần sẽ cộng dồn)"},
+    {"L2 R2", "Tua 60 giây"},
+    {"L1 R1", "Video trước / sau"},
+    {"Y", "Toàn màn hình"},
+    {"X", "Chất lượng"},
+    {"START", "Tốc độ phát"},
+    {"SELECT", "Tùy chọn video (tải về, phụ đề, lặp, chương, khóa phím…)"},
+    {"Lên", "Sang cụm nút bên phải: Theo dõi · Xem sau · Tải về · Chất lượng · Tốc độ › D-pad chọn, A bấm, B về trình phát"},
+    {"Xuống", "Sang hàng Tiếp theo › Trái/Phải chọn, L2/R2 nhảy 4 video, A phát, Lên về trình phát"},
+    {"B", "Về danh sách đã mở video (bộ, kênh, tìm kiếm, thư viện)"},
+    {NULL, NULL}};
+static const HelpRow HELP_2[] = {
+    {"A", "Phát / dừng"},
+    {"Trái Phải", "Tua 10 giây"},
+    {"L2 R2", "Tua 60 giây"},
+    {"L1 R1", "Video trước / sau"},
+    {"X", "Chất lượng"},
+    {"START", "Tốc độ"},
+    {"SELECT", "Tùy chọn video"},
+    {"Lên Xuống", "Hiện thanh thông tin"},
+    {"B / Y", "Thu nhỏ lại"},
+    {NULL, NULL}};
+static const HelpRow HELP_3[] = {
+    {"A", "Gõ chữ đang chọn"},
+    {"B", "Xóa một chữ (hết chữ thì quay về)"},
+    {"Y", "Dấu cách"},
+    {"X", "Xóa hết"},
+    {"SELECT", "Bật / tắt gõ Telex"},
+    {"START", "Tìm"},
+    {"Phải", "Sang \"Tìm gần đây\": A tìm lại, X xóa, Trái về bàn phím"},
+    {"Kết quả", "Lên/Xuống chọn · A xem · X Xem sau · SELECT bộ lọc (thời gian, thời lượng, YouTube Music) · B sửa từ khóa"},
+    {NULL, NULL}};
+static const HelpRow HELP_4[] = {
+    {"L1 R1", "Đổi giữa Video và Danh sách phát của kênh"},
+    {"A", "Xem video / mở một bộ"},
+    {"Trong bộ", "A phát từ tập đang chọn (hết tập tự sang tập sau) · X lưu cả bộ vào Thư viện · Y đảo thứ tự tập · B về kênh"},
+    {"X", "Ở mục Video: thêm / bỏ Xem sau"},
+    {"B", "Quay lại"},
+    {NULL, NULL}};
+static const HelpRow HELP_5[] = {
+    {"L1 R1", "Đổi tab: Lịch sử · Xem sau · Kênh theo dõi · Đã tải · các danh sách phát · Đã thích"},
+    {"A", "Xem video / mở kênh"},
+    {"X", "Bỏ video khỏi Xem sau hoặc khỏi danh sách đang mở"},
+    {"START ×2", "Xóa cả danh sách phát tự tạo (bấm START hai lần)"},
+    {"Y", "Tìm kiếm"},
+    {"SELECT", "Mở lại video đang phát"},
+    {"B", "Về trang chủ"},
+    {NULL, NULL}};
+static const HelpRow HELP_6[] = {
+    {"A", "Mở mục / đổi giá trị"},
+    {"B", "Quay lại"},
+    {"L1 R1", "Sang nhóm cài đặt bên cạnh"},
+    {"Lên Xuống", "Chọn dòng"},
+    {NULL, NULL}};
+static const HelpRow HELP_7[] = {
+    {"Bảng nhanh", "Nút Home bên hông (Brick / Brick Pro) · MENU (Smart Pro S) · R3 (R36S): Tiếp tục · Tắt màn hình vẫn nghe · Nghe nền · Thoát"},
+    {"Khóa phím", "SELECT › Khóa phím. Mở khóa: bấm SELECT 3 lần"},
+    {"Tắt màn hình", "SELECT › Tắt màn hình, nghe tiếp. Bấm phím bất kỳ để bật lại"},
+    {"Cập nhật", "Cài đặt › Cập nhật & giới thiệu › Cập nhật: A kiểm tra, A hai lần để tải và cài, A mở lại app"},
+    {"Điện thoại", "Cài đặt › Tài khoản & kênh › Điều khiển bằng điện thoại: A lấy mã mới · X tắt · B đóng"},
+    {"Đổi phím", "Cài đặt › Pin, phím & hệ thống › Đổi phím"},
+    {NULL, NULL}};
+static const char *HELP_NAME[HELP_N] = {"Trang chủ", "Xem video", "Toàn màn hình", "Tìm kiếm", "Kênh & danh sách phát", "Thư viện", "Cài đặt", "Thao tác đặc biệt"};
+static const HelpRow *HELP_ROWS[HELP_N] = {HELP_0, HELP_1, HELP_2, HELP_3, HELP_4, HELP_5, HELP_6, HELP_7};
+/* the key column: single key names follow the user's key map ("A", "L1"…), other words are translated */
+static void help_keys(const char *keys, char *out, size_t n) {
+    static const struct { const char *name; Key k; } map[] = {{"A", K_A}, {"B", K_B}, {"X", K_X}, {"Y", K_Y}, {"L1", K_L1}, {"R1", K_R1}, {"L2", K_L2}, {"R2", K_R2}, {"START", K_START}, {"SELECT", K_SELECT}};
+    bool mapped = false; out[0] = 0;
+    char copy[96]; snprintf(copy, sizeof(copy), "%s", keys);
+    for (char *t = strtok(copy, " "); t; t = strtok(NULL, " ")) {
+        const char *w = t;
+        for (int i = 0; i < 10; i++) if (!strcmp(t, map[i].name)) { w = KN(map[i].k); mapped = true; }
+        size_t l = strlen(out); snprintf(out + l, n - l, "%s%s", l ? " " : "", w);
+    }
+    if (!mapped) snprintf(out, n, "%s", T(keys));
+}
 static void draw_groups(void) {
-    int rowh = 66, top = 96;
+    int rowh = 60, top = 92;
     int gx = SCREEN_W - 712 > 300 ? 688 : 688;
     for (int g = 0; g < G_N; g++) {
         int y = top + g * rowh;
         bool on = g == A.groupSel;
-        if (on) D_round(27, y + 3, gx - 48, 58, 10, C_BLACK);
-        D_round(24, y, gx - 48, 58, 10, on ? C_INK : C_SURFACE);
-        D_icon(GROUP_ICON[g], 40, y + 15, 28, on ? C_DARK : C_MUSTARD);
-        D_text(F_SEMI, 20, GROUP_LABEL[g], 82, y + 6, on ? C_DARK : C_INK, gx - 160, AL_LEFT);
+        if (on) D_round(27, y + 3, gx - 48, 54, 10, C_BLACK);
+        D_round(24, y, gx - 48, 54, 10, on ? C_INK : C_SURFACE);
+        D_icon(GROUP_ICON[g], 40, y + 13, 28, on ? C_DARK : C_MUSTARD);
+        D_text(F_SEMI, 20, GROUP_LABEL[g], 82, y + 4, on ? C_DARK : C_INK, gx - 160, AL_LEFT);
         char sum[300]; group_summary(g, sum, sizeof(sum));
-        D_text(F_REG, 15, sum, 82, y + 33, on ? C_LINE : C_MUTED, gx - 160, AL_LEFT);
-        if (g == G_ABOUT && (Ota_state() == OTA_AVAILABLE || Ota_state() == OTA_READY)) D_circle(gx - 50, y + 29, 7, C_MUSTARD);
-        D_tri(gx - 38, y + 22, gx - 38, y + 36, gx - 31, y + 29, on ? C_DARK : C_DIM);
+        D_text(F_REG, 15, sum, 82, y + 30, on ? C_LINE : C_MUTED, gx - 160, AL_LEFT);
+        if (g == G_ABOUT && (Ota_state() == OTA_AVAILABLE || Ota_state() == OTA_READY)) D_circle(gx - 50, y + 27, 7, C_MUSTARD);
+        D_tri(gx - 38, y + 20, gx - 38, y + 34, gx - 31, y + 27, on ? C_DARK : C_DIM);
     }
     /* right card: what is inside the chosen group */
     int cw = SCREEN_W - gx - 24;
     D_shadow(gx, 96, cw, 400, 14, 6); D_round(gx, 96, cw, 400, 14, C_SURFACE); D_roundRing(gx, 96, cw, 400, 14, 2, C_BLACK);
     D_icon(GROUP_ICON[A.groupSel], gx + 20, 116, 30, C_MUSTARD);
     D_text(F_BOLD, 22, GROUP_LABEL[A.groupSel], gx + 62, 118, C_INK, cw - 80, AL_LEFT);
-    if (A.groupSel == G_KIDS) D_textBox(F_REG, 17, "Phụ huynh: mã PIN, giới hạn thời gian, khung giờ, nhắc nghỉ mắt, kênh được duyệt, từ khóa cấm, báo cáo xem", gx + 20, 168, cw - 40, 6, 24, C_MUTED);
+    if (A.groupSel == G_HELP) D_textBox(F_REG, 17, "Các phím dùng ở Trang chủ, khi xem video, toàn màn hình, tìm kiếm, kênh và danh sách phát, thư viện, cài đặt · và những thao tác đặc biệt như bấm START hai lần để xóa danh sách, SELECT ba lần để mở khóa phím", gx + 20, 168, cw - 40, 8, 24, C_MUTED);
+    else if (A.groupSel == G_KIDS) D_textBox(F_REG, 17, "Phụ huynh: mã PIN, giới hạn thời gian, khung giờ, nhắc nghỉ mắt, kênh được duyệt, từ khóa cấm, báo cáo xem", gx + 20, 168, cw - 40, 6, 24, C_MUTED);
     else {
         int ids[8], n = group_rows(A.groupSel, ids);
         for (int r = 0; r < n; r++) {
@@ -2753,14 +2860,34 @@ static void draw_groups(void) {
     D_textBox(F_REG, 16, "A mở mục · trong mục: L1/R1 sang mục khác, B quay lại", gx, 512, cw, 2, 22, C_DIM);
     draw_nav(4, -1);
 }
+static void draw_help(void) {
+    draw_chips(HELP_NAME, HELP_N, A.helpSec, false, 92);
+    A.helpScroll += (A.helpWant - A.helpScroll) * 0.35f; if (fabsf(A.helpWant - A.helpScroll) < 1) A.helpScroll = A.helpWant;
+    const int top = 150, bottom = 712, kw = 168, tx = 24 + kw + 20, tw = SCREEN_W - tx - 32;
+    SDL_RenderSetClipRect(A.ren, &(SDL_Rect){0, top, SCREEN_W, bottom - top});
+    int y = top + 6 - (int)A.helpScroll;
+    for (const HelpRow *r = HELP_ROWS[A.helpSec]; r->keys; r++) {
+        char kl[96]; help_keys(r->keys, kl, sizeof(kl));
+        D_round(24, y, kw, 30, 8, C_INK); D_text(F_XBOLD, 16, kl, 24 + kw / 2, y + 15 - D_fontHeight(F_XBOLD, 16) / 2, C_DARK, kw - 12, AL_CENTER);
+        int lines = D_textBox(F_MED, 20, r->text, tx, y + 1, tw, 4, 27, C_INK);
+        y += (lines < 1 ? 1 : lines) * 27 + 14;
+    }
+    SDL_RenderSetClipRect(A.ren, NULL);
+    int total = y + (int)A.helpScroll - top; A.helpMax = total > bottom - top ? total - (bottom - top) : 0;
+    if (A.helpWant > A.helpMax) A.helpWant = (float)A.helpMax;
+    D_rect(0, 716, SCREEN_W, 52, C_BAR); D_rect(0, 716, SCREEN_W, 2, C_RAISED);
+    char l1r1[16]; snprintf(l1r1, sizeof(l1r1), "%s %s", KN(K_L1), KN(K_R1));
+    int x = 24; x += D_hint(x, 728, l1r1, "Đổi phần") + 20; if (A.helpMax) x += D_hint(x, 728, "UD", "Cuộn") + 20; D_hint(x, 728, KN(K_B), "Về Cài đặt");
+}
 static void draw_settings(void) {
     D_rect(0, 0, SCREEN_W, SCREEN_H, C_BG);
-    const char *ttl = A.custPage ? "Tùy biến giao diện" : A.keyPage ? "Đổi phím" : "Cài đặt";
+    const char *ttl = A.helpPage ? "Hướng dẫn phím" : A.custPage ? "Tùy biến giao diện" : A.keyPage ? "Đổi phím" : "Cài đặt";
     D_text(F_XBOLD, 34, ttl, 24, 16, C_INK, 0, AL_LEFT);
     const char *k[2] = {KN(K_B), KN(K_A)}, *t[2] = {"Về", A.keyPage ? "Gán phím" : "Chọn"};
     status_min = 24 + D_textW(F_XBOLD, 34, T(ttl)) + 30;
-    header_hints(SCREEN_R, k, t, 2);
+    header_hints(SCREEN_R, k, t, A.helpPage ? 1 : 2);
     draw_stripes(76);
+    if (A.helpPage) { draw_help(); return; }
     if (A.custPage) { draw_custom(); return; }
     if (A.keyPage) {
         for (int i = 0; i < KM_COUNT; i++) {
@@ -3073,7 +3200,7 @@ static void draw_watch(void) {
     else snprintf(meta, sizeof(meta), "%s", views);
     D_text(F_REG, 18, meta, x, y, C_MUTED, cw, AL_LEFT); y += 40;
     D_circle(x + 24, y + 24, 24, C_BLACK);
-    if (!draw_avatar(A.cur.channel_id, x + 24, y + 24, 23, C_BG)) {
+    if (!draw_avatar(A.cur.channel_id, A.cur.channel, x + 24, y + 24, 23, C_BG)) {
         D_circle(x + 24, y + 24, 22, avatar_color(A.cur.channel));
         char ini[16]; initials(A.cur.channel, ini); D_text(F_XBOLD, 17, ini, x + 24, y + 24 - D_fontHeight(F_XBOLD, 17) / 2, C_INK, 0, AL_CENTER);
     }
@@ -3252,7 +3379,7 @@ static void pin_submit(void) {
     if (!Kids_checkPin(A.pin)) { A.pinErrUntil = SDL_GetTicks() + 1500; memcpy(A.pin, "0000", 5); A.pinPos = 0; return; }
     A.pinFor = PIN_NONE;
     switch (purpose) {
-        case PIN_SETTINGS: A.settingsUnlocked = true; A.screen = SC_SETTINGS; A.keyPage = false; A.custPage = false; A.capture = -1; icon_state(); break;
+        case PIN_SETTINGS: A.settingsUnlocked = true; A.screen = SC_SETTINGS; A.keyPage = false; A.custPage = false; A.helpPage = false; A.capture = -1; icon_state(); break;
         case PIN_QUIT: A.quit = true; break;
         case PIN_EXTEND: Kids_grantExtra(15); A.kidsLock = 0; kids_resume(); toast("Đã cho xem thêm 15 phút"); break;
         case PIN_HOURS: Kids_waiveHoursToday(); A.kidsLock = 0; kids_resume(); toast("Hôm nay được xem ngoài khung giờ"); break;
@@ -3883,7 +4010,7 @@ static void update(void) {
         for (int i = n - 1; i >= 0; i--) if (!Store_isChannel(got[i].channel_id) && Store_toggleChannel(&got[i])) added++;
         if (added) { Store_save(); Log_msg("account channels: %d new from the Google account", added); toast("Đã thêm %d kênh đăng ký từ tài khoản Google", added); }
     }
-    /* Library → Đã thích (Google): the account's Liked videos, liked anywhere; refreshed every 5 min or after a like here */
+    /* Library › Đã thích (Google): the account's Liked videos, liked anywhere; refreshed every 5 min or after a like here */
     if (A.likedJob) {
         JobState js = Yt_state(A.likedJob);
         if (js == JOB_DONE || js == JOB_FAILED) {

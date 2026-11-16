@@ -326,6 +326,27 @@ static const char *run_text(JSON_Object *o, const char *key) {
     JSON_Array *runs = json_object_get_array(t, "runs");
     return runs ? json_object_get_string(json_array_get_object(runs, 0), "text") : NULL;
 }
+static __thread int pics_seen;   /* channel pictures found in the answer being read */
+static const char *pic_in(JSON_Value *v, int depth) {   /* a yt3 / ggpht picture address anywhere inside */
+    if (depth > 10) return NULL;
+    const char *s = json_value_get_string(v);
+    if (s) return (strstr(s, "yt3.") || strstr(s, "ggpht.com") || strstr(s, "googleusercontent.com")) ? s : NULL;
+    JSON_Object *o = json_value_get_object(v);
+    if (o) { for (size_t i = 0; i < json_object_get_count(o); i++) { const char *r = pic_in(json_object_get_value_at(o, i), depth + 1); if (r) return r; } return NULL; }
+    JSON_Array *a = json_value_get_array(v);
+    for (size_t i = 0; a && i < json_array_get_count(a); i++) { const char *r = pic_in(json_array_get_value(a, i), depth + 1); if (r) return r; }
+    return NULL;
+}
+static const char *ucid_in(JSON_Value *v, int depth) {   /* a channel id ("UC…", 24 letters) anywhere inside */
+    if (depth > 10) return NULL;
+    const char *s = json_value_get_string(v);
+    if (s) return (!strncmp(s, "UC", 2) && strlen(s) == 24) ? s : NULL;
+    JSON_Object *o = json_value_get_object(v);
+    if (o) { for (size_t i = 0; i < json_object_get_count(o); i++) { const char *r = ucid_in(json_object_get_value_at(o, i), depth + 1); if (r) return r; } return NULL; }
+    JSON_Array *a = json_value_get_array(v);
+    for (size_t i = 0; a && i < json_array_get_count(a); i++) { const char *r = ucid_in(json_array_get_value(a, i), depth + 1); if (r) return r; }
+    return NULL;
+}
 static void take_video(JSON_Object *v, VideoList *out) {
     VideoItem it; memset(&it, 0, sizeof(it));
     const char *id = json_object_get_string(v, "videoId");
@@ -341,8 +362,11 @@ static void take_video(JSON_Object *v, VideoList *out) {
         if (cid) snprintf(it.channel_id, sizeof(it.channel_id), "%s", cid);
     }
     {   /* the channel's little picture comes with every search result: remember where it is */
-        const char *pic = json_object_get_string(json_array_get_object(json_object_dotget_array(v, "channelThumbnailSupportedRenderers.channelThumbnailWithLinkRenderer.thumbnail.thumbnails"), 0), "url");
-        if (pic && it.channel_id[0]) Account_avatarSet(it.channel_id, pic);
+        JSON_Value *sup = json_object_get_value(v, "channelThumbnailSupportedRenderers");
+        if (!sup) sup = json_object_get_value(v, "avatar");
+        const char *pic = sup ? pic_in(sup, 0) : NULL;
+        if (!it.channel_id[0] && sup) { const char *c2 = ucid_in(sup, 0); if (c2) snprintf(it.channel_id, sizeof(it.channel_id), "%s", c2); }
+        if (pic && it.channel_id[0]) { Account_avatarSet(it.channel_id, pic, it.channel); pics_seen++; }
     }
     const char *len = run_text(v, "lengthText");
     it.duration = duration_of(len);
@@ -416,6 +440,7 @@ static bool search_page(const char *q, bool newest, const char *cont, VideoList 
 typedef struct { char q[300]; bool newest, safe; VideoList items; char next[1024]; bool done; Uint32 used; } SearchCache;
 static SearchCache sc[6];
 static pthread_mutex_t slock = PTHREAD_MUTEX_INITIALIZER;
+int Innertube_picsSeen(void) { int n = pics_seen; pics_seen = 0; return n; }   /* channel pictures in the answers read since the last call (this thread) */
 bool Innertube_search(const char *q, bool newest, int start, int count, VideoList *out, char *err, size_t en) {
     pthread_mutex_lock(&slock);
     SearchCache *c = NULL, *old = &sc[0];

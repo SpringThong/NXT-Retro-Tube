@@ -871,7 +871,10 @@ static void *fast_work(void *arg) {
             }
         } else {
             ok = Innertube_search(copy.arg, copy.newest, copy.start, copy.count, &list, why, sizeof(why));
-            if (ok) Log_msg("search \"%s\" direct in %.2fs: %d items", copy.arg, (SDL_GetTicks() - t0) / 1000.0, list.count);
+            if (ok) {
+                int withId = 0; for (int q = 0; q < list.count; q++) if (strlen(list.items[q].channel_id) == 24) withId++;
+                Log_msg("search \"%s\" direct in %.2fs: %d items (%d with channel id, %d channel pictures, %d known in all)", copy.arg, (SDL_GetTicks() - t0) / 1000.0, list.count, withId, Innertube_picsSeen(), Account_avatarCount());
+            }
         }
         pthread_mutex_lock(&lock);
         if (bg) bg_fast--;
