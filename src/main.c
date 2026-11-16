@@ -163,6 +163,7 @@ static struct {
     /* 2.7 channel page: 0 = its videos, 1 = its playlists, 2 = inside one playlist */
     int stripSel; float stripScroll;
     Screen backScreen;   /* the browsing screen last shown before the watch page */
+    bool plOrdered, plReversed;
     int chanMode, chanPlSel; bool plSaveWhenLoaded, chanFromHome; char chanTitle[160], plId[64], plTitle[200];
     /* library */
     int libTab, libSel; float lscroll;
@@ -224,6 +225,8 @@ static void fmt_minutes(int secs, char *out, size_t n);
 static bool parent_mode(void) { return (A.screen == SC_SETTINGS || A.screen == SC_KIDS) && A.settingsUnlocked; }
 
 static void chan_savePlaylist(void);
+static void chan_playlistLoaded(void);
+static void more_results(void);
 static void toast(const char *fmt, ...) {
     va_list ap; va_start(ap, fmt); vsnprintf(A.toast, sizeof(A.toast), T(fmt), ap); va_end(ap);
     A.toastUntil = SDL_GetTicks() + 2600;
@@ -836,11 +839,18 @@ static void poll_jobs(void) {
             int before = A.found.count;
             for (int k = 0; k < l.count; k++) if (Kids_allowed(&l.items[k])) VideoList_add(&A.found, &l.items[k]);
             if (A.foundAppend && A.found.count == before) A.foundEnd = true;
+            int got = l.count;
             VideoList_clear(&l); A.searchJob = 0;
             if (!A.found.count) snprintf(A.searchErr, sizeof(A.searchErr), "%s", T(A.channelView && A.chanMode == 1 ? "Kênh này chưa có danh sách phát" : "Không tìm thấy video nào"));
+            if (A.channelView && A.chanMode == 2) {   /* a playlist is read to its end (in pages of 50), then put in watching order */
+                if (got < 50 || A.found.count >= 300) A.foundEnd = true;
+                if (!A.foundEnd) more_results(); else chan_playlistLoaded();
+            }
             if (A.channelView && A.chanMode == 1 && !A.foundAppend && A.chanPlSel > 0 && A.chanPlSel < A.found.count) { A.resultSel = A.chanPlSel; A.chanPlSel = 0; }
-            if (A.channelView && A.chanMode == 2 && A.plSaveWhenLoaded) { A.plSaveWhenLoaded = false; chan_savePlaylist(); }
-        } else if (s == JOB_FAILED) { snprintf(A.searchErr, sizeof(A.searchErr), "%s", Yt_error(A.searchJob)); Yt_forget(A.searchJob); A.searchJob = 0; if (A.foundAppend) A.foundEnd = true; }
+        } else if (s == JOB_FAILED) {
+            snprintf(A.searchErr, sizeof(A.searchErr), "%s", Yt_error(A.searchJob)); Yt_forget(A.searchJob); A.searchJob = 0; if (A.foundAppend) A.foundEnd = true;
+            if (A.channelView && A.chanMode == 2 && A.found.count) chan_playlistLoaded();
+        }
     }
     if (A.resolveJob) {
         JobState s = Yt_state(A.resolveJob);
@@ -975,7 +985,7 @@ static void chan_load(void) {
     A.searchJob = Yt_channelPage(arg, 0, A.chanMode ? 50 : PAGE_ONE);
     if (A.chanMode == 2) snprintf(A.resultTitle, sizeof(A.resultTitle), "%s", A.plTitle);
     else snprintf(A.resultTitle, sizeof(A.resultTitle), T("Kênh %s"), A.chanTitle);
-    A.resultSel = 0; A.rscroll = 0;
+    A.resultSel = 0; A.rscroll = 0; A.plOrdered = false; A.plReversed = false;
 }
 /* keep a channel's playlist in the Library as one of the user's own playlists */
 static void chan_savePlaylist(void) {
@@ -989,6 +999,35 @@ static void chan_savePlaylist(void) {
     int added = 0;
     for (int k = 0; k < A.found.count; k++) if (!A.found.items[k].pl_id[0] && PL_toggle(i, &A.found.items[k])) added++;
     toast("Đã lưu vào Thư viện: %d video", added);
+}
+static void chan_reverse(void) {
+    for (int i = 0, j = A.found.count - 1; i < j; i++, j--) { VideoItem t = A.found.items[i]; A.found.items[i] = A.found.items[j]; A.found.items[j] = t; }
+    A.plReversed = !A.plReversed; A.resultSel = 0; A.rscroll = 0;
+}
+/* the episode number a title starts with or names ("Phần 12 | …", "Tập 3", "#7"): -1 if none */
+static int title_number(const char *t) {
+    for (const char *p = t; *p; p++) if (*p >= '0' && *p <= '9') { long n = strtol(p, NULL, 10); return n >= 0 && n < 100000 ? (int)n : -1; }
+    return -1;
+}
+/* all the episodes are here. Many channels list the newest first (26, 25, … 1): turn those round, so
+ * episode 1 is on top and "next" really is the next episode. Y turns it back. */
+static void chan_playlistLoaded(void) {
+    if (!A.plOrdered) {
+        A.plOrdered = true;
+        int up = 0, down = 0, prev = -1, numbered = 0;
+        for (int i = 0; i < A.found.count; i++) {
+            int n = title_number(A.found.items[i].title); if (n < 0) continue;
+            numbered++;
+            if (prev >= 0) { if (n > prev) up++; else if (n < prev) down++; }
+            prev = n;
+        }
+        if (A.found.count >= 3 && numbered * 10 >= A.found.count * 7 && down >= 2 && down > up * 4) {
+            chan_reverse();
+            toast("Bộ này xếp tập mới trước · đã đảo lại để xem từ tập đầu (Y để đổi)");
+            Log_msg("playlist %s: newest first (%d down, %d up of %d), reversed", A.plId, down, up, A.found.count);
+        }
+    }
+    if (A.plSaveWhenLoaded) { A.plSaveWhenLoaded = false; chan_savePlaylist(); }
 }
 static void more_results(void) {
     if (A.searchJob || A.foundEnd || !A.found.count) return;
@@ -1882,7 +1921,12 @@ static void handle_key(Key k) {
                 snprintf(A.plId, sizeof(A.plId), "%s", pl->pl_id); snprintf(A.plTitle, sizeof(A.plTitle), "%s", pl->title);
                 A.chanPlSel = A.resultSel; A.chanMode = 2; A.plSaveWhenLoaded = k == K_X; chan_load(); return;
             }
-            else if (A.channelView && A.chanMode == 2 && k == K_X) { if (A.searchJob && !A.found.count) A.plSaveWhenLoaded = true; else chan_savePlaylist(); }
+            else if (A.channelView && A.chanMode == 2 && k == K_X) { if (A.searchJob || !A.foundEnd) { A.plSaveWhenLoaded = true; toast("Đang tải hết các tập, xong sẽ lưu…"); } else chan_savePlaylist(); }
+            else if (A.channelView && A.chanMode == 2 && k == K_Y) {   /* newest first <-> episode 1 first */
+                if (A.searchJob || !A.foundEnd) toast("Đang tải hết các tập, đợi một chút…");
+                else if (A.found.count > 1) { A.plOrdered = true; chan_reverse(); toast("Đã đảo thứ tự các tập"); }
+                return;
+            }
             else if (A.channelView && A.chanMode == 2 && k == K_B) { int back = A.chanPlSel; A.chanMode = 1; A.plSaveWhenLoaded = false; chan_load(); A.chanPlSel = back; return; }
             else if (k == K_A && A.found.count) {
                 open_video(&A.found.items[A.resultSel], &A.found, A.resultSel); A.screen = SC_WATCH;
@@ -2430,7 +2474,8 @@ static void draw_search(void) {
     if (!A.results) { x += D_hint(x, 728, KN(K_A), "Gõ") + 20; x += D_hint(x, 728, KN(K_B), "Xóa chữ / về") + 20; x += D_hint(x, 728, KN(K_Y), "Dấu cách") + 20; x += D_hint(x, 728, KN(K_START), "Tìm") + 20; D_hint(x, 728, l2r2, "Đổi mục"); }
     else { x += D_hint(x, 728, "UD", "Chọn") + 20;
         if (A.channelView && A.chanMode) {
-            x += D_hint(x, 728, KN(K_A), A.chanMode == 1 ? "Mở bộ này" : "Phát từ tập này") + 20; x += D_hint(x, 728, KN(K_X), "Lưu cả bộ vào Thư viện") + 20;
+            x += D_hint(x, 728, KN(K_A), A.chanMode == 1 ? "Mở bộ này" : "Phát từ tập này") + 20; x += D_hint(x, 728, KN(K_X), "Lưu cả bộ") + 20;
+            if (A.chanMode == 2) x += D_hint(x, 728, KN(K_Y), "Đảo thứ tự") + 20;
             D_hint(x, 728, KN(K_B), A.chanMode == 2 ? "Về kênh" : "Về");
         } else {
             x += D_hint(x, 728, KN(K_A), "Xem") + 20; x += D_hint(x, 728, KN(K_X), "Xem sau") + 20; if (!A.channelView) x += D_hint(x, 728, KN(K_SELECT), "Bộ lọc") + 20; x += D_hint(x, 728, KN(K_B), A.channelView ? "Về" : "Sửa từ khóa") + 20; D_hint(x, 728, l2r2, "Đổi mục");
