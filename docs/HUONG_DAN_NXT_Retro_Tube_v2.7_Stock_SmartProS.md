@@ -1,4 +1,4 @@
-# NXT Retro Tube 2.6 — firmware gốc TrimUI (Stock) — TrimUI Smart Pro S
+# NXT Retro Tube 2.7 — firmware gốc TrimUI (Stock) — TrimUI Smart Pro S
 
 ## Cài đặt
 Chép thư mục `Apps/NXT_Retro_Tube` vào `Apps/` trên thẻ nhớ (firmware gốc Smart Pro S 1.0.1 trở lên). Mở từ mục Apps (icon NXT Retro Tube).
@@ -19,6 +19,19 @@ Mình chưa có máy Smart Pro S để thử trực tiếp: nếu gặp lỗi (m
 `.userdata/nxt-tube-stock/shared/nxt-retro-tube/cache/nxt-retro-tube-run.txt` cho tác giả để sửa ở bản sau (qua OTA).
 
 Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/nxt-tube-stock/shared/nxt-retro-tube`.
+
+## Mới ở 2.7
+- **Danh sách phát của kênh**: trong trang kênh bấm **L1/R1** để đổi giữa **Video** và **Danh sách phát** (gom theo bộ).
+  Mở một bộ: các tập xếp theo thứ tự, phát hết tập tự sang tập sau. Bộ nào kênh xếp tập mới lên đầu thì máy tự đảo lại
+  để xem từ tập 1; **Y** đổi thứ tự, **X** lưu cả bộ vào Thư viện.
+- **Tab Đăng ký có hàng kênh** ở trên (như YouTube trên web): từ hàng video đầu bấm **Lên**, **Trái/Phải** chọn kênh, **A** mở kênh.
+- **Ảnh đại diện thật của kênh** thay cho chữ viết tắt (kênh đăng ký và kênh gặp trong kết quả tìm kiếm).
+- **Bấm B khi đang xem** thì về đúng danh sách đã mở video (bộ, kênh, tìm kiếm, thư viện), không về thẳng trang chủ.
+- **Chọn nút cạnh trình phát**: đang xem (chưa toàn màn hình) bấm **Lên** để sang Theo dõi · Xem sau · Tải về · Chất lượng · Tốc độ, **A** để bấm.
+- **Hướng dẫn phím** ngay trong máy: Cài đặt → Hướng dẫn phím (8 phần, kể cả các thao tác bấm 2 lần, 3 lần).
+- Thư viện chứa được **30 danh sách phát** (trước là 7); đứng ở một danh sách bấm **START hai lần** để xóa.
+- **Icon mới, đồng bộ cho bộ app NXT**: icon Tube nhỏ lại, cân giữa ô và có viền tối nên rõ trên nền xanh. Mỗi lần mở Tube,
+  các app NXT khác trong `Apps/` (Music, Movie, BookNest, BrickTok, NXT File) cũng được đổi sang cùng bộ icon; icon cũ được giữ lại cạnh đó (`.nxt-before`).
 
 ## Mới ở 2.6
 - **Đăng ký kênh đồng bộ hai chiều** như nút Thích: kênh đăng ký trên điện thoại / máy tính hiện "đã đăng ký" trên máy và có trong tab Kênh;
@@ -46,7 +59,7 @@ Bản 2.5 đưa toàn bộ tính năng của bản thử 2.4.1 lên cả 7 bản
 - **Bộ chỉnh âm (EQ)**: Cài đặt → Âm thanh: Trầm mạnh, Giọng hát, Loa nhỏ của máy, Tai nghe, Rock / EDM.
 - **Tắt màn hình, nghe tiếp** ngay trong SELECT (vẫn dùng được nút nguồn / bảng nhanh như trước).
 
-**Cập nhật**: máy đang chạy bản 2.1 trở lên tự nhận bản 2.6 qua OTA (Cài đặt → Cập nhật & giới thiệu → Cập nhật).
+**Cập nhật**: máy đang chạy bản 2.1 trở lên tự nhận bản 2.7 qua OTA (Cài đặt → Cập nhật & giới thiệu → Cập nhật).
 
 ## Mới ở 2.4
 **Tài khoản Google & xem tiếp**

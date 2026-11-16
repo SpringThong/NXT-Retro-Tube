@@ -44,10 +44,13 @@ ota_app() {   # $1 = pak dir, $2 = channel
     (cd "$T" && zip -qrX9 "$DIST/ota-app-$2.zip" .)
 }
 
-P="$DIST/stage/nxredux/Tools/NXT Retro Tube.pak"; mkdir -p "$P"; common "$P" nxredux nxredux; cp -r "$ROOT/pak/nxredux/integration" "$P/"; ota_app "$P" nxredux
+P="$DIST/stage/nxredux/Tools/NXT Retro Tube.pak"; mkdir -p "$P"; common "$P" nxredux nxredux; cp -r "$ROOT/pak/nxredux/integration" "$P/"; rm -rf "$P/integration/icon-repair/state"
+cp "$ROOT/pak/nxredux/integration/icon-repair/icons/color/menu_icon_nxt_tube.png" "$P/icon.png"; ota_app "$P" nxredux   # the pak's own icon = the colour set's (what the icon engine installs)
 P="$DIST/stage/nextui/Tools/tg5040/NXT Retro Tube.pak"; mkdir -p "$P"; common "$P" nextui nextui; cp "$ROOT/third_party/msettings/nextui/libmsettings.so" "$P/bin/tg5040/"; ota_app "$P" nextui
-P="$DIST/stage/stock/Apps/NXT_Retro_Tube"; mkdir -p "$P"; common "$P" stock stock; cp "$ROOT/third_party/msettings/stock/libmsettings.so" "$P/bin/tg5040/"; ota_app "$P" stock
-P="$DIST/stage/stock_sps/Apps/NXT_Retro_Tube"; mkdir -p "$P"; common "$P" stock_sps stock_sps; ota_app "$P" stock-sps
+# Stock: the six NXT colour icons, sized and edged for coloured launcher backgrounds (tools/icons/make_nxt_icons.py)
+stock_icons() { cp -r "$ROOT/pak/stock/nxt-icons" "$1/"; cp "$ROOT/pak/stock/sync-nxt-icons.sh" "$1/"; cp "$ROOT/pak/stock/nxt-icons/menu_icon_nxt_tube.png" "$1/icon.png"; }
+P="$DIST/stage/stock/Apps/NXT_Retro_Tube"; mkdir -p "$P"; common "$P" stock stock; cp "$ROOT/third_party/msettings/stock/libmsettings.so" "$P/bin/tg5040/"; stock_icons "$P"; ota_app "$P" stock
+P="$DIST/stage/stock_sps/Apps/NXT_Retro_Tube"; mkdir -p "$P"; common "$P" stock_sps stock_sps; stock_icons "$P"; ota_app "$P" stock-sps
 P="$DIST/stage/muos/MUOS/application/NXT Retro Tube"; mkdir -p "$P"; common "$P" muos muos
 cp "$ROOT/pak/muos/mux_launch.sh" "$ROOT/pak/muos/mux_lang.ini" "$P/"; cp -r "$ROOT/pak/muos/glyph" "$P/"; chmod +x "$P/mux_launch.sh"; ota_app "$P" muos
 P="$DIST/stage/knulli/roms/ports/nxt-retro-tube"; mkdir -p "$P"; common "$P" knulli knulli; ota_app "$P" knulli

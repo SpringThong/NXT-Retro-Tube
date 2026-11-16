@@ -1,0 +1,5 @@
+# BEGIN NXT ICON REPAIR 1
+if [ -f "${SDCARD_PATH:-/mnt/SDCARD}/Tools/NXT Icon Repair.pak/repair.sh" ]; then
+    sh "${SDCARD_PATH:-/mnt/SDCARD}/Tools/NXT Icon Repair.pak/repair.sh" --boot > "${SDCARD_PATH:-/mnt/SDCARD}/Tools/NXT Icon Repair.pak/boot-result.txt" 2>&1 || :
+fi
+# END NXT ICON REPAIR 1

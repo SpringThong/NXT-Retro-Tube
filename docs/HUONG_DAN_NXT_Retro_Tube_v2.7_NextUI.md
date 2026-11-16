@@ -1,20 +1,22 @@
-# NXT Retro Tube 2.6 — dArkOS (R36S và máy RK3326 cùng kiểu)
-
-## Yêu cầu
-- dArkOS trên R36S (và máy cùng bo mạch RG351MP / RK3326, tay cầm "GO-Super Gamepad"). Cần Wi-Fi (USB Wi-Fi trên R36S).
-- Đã đối chiếu với mã nguồn dArkOS (christianhaitian/dArkOS, 10/2026): mã phím trong device tree `rk3326-rg351mp-linux`
-  (SELECT = F1, START = F2, L3 = F3, R3/phím nóng = F4), daemon phím nóng `ogage`, `current_volume` / `amixer`,
-  tự ngủ `auto_suspend.py`. Chưa chạy thử trên máy thật — bản muOS đã chạy được trên dArkOS nên phần còn lại giống bản đó.
+# NXT Retro Tube 2.7 — NextUI (TrimUI Brick / Brick Pro)
 
 ## Cài đặt
-Chép thư mục `ports` trong gói này vào thẻ nhớ chứa game (phân vùng EASYROMS — chép đè vào thư mục `ports` có sẵn), để có:
-- `ports/NXT Retro Tube.sh`
-- `ports/nxt-retro-tube/` (app)
+Chép thư mục `Tools/tg5040/NXT Retro Tube.pak` vào `Tools/tg5040/` trên thẻ nhớ. Mở từ Tools.
 
-Nếu bạn để game ở thẻ thứ hai (`/roms2`) thì chép vào `ports` của thẻ đó. Sau đó trong EmulationStation:
-**Start → Game settings → Update gamelists** (hoặc khởi động lại). App nằm trong **Ports**.
+Trên NextUI, launcher không có icon riêng cho Tools nên app hiện theo tên (không thay launcher).
 
-Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm trong `ports/nxt-retro-tube/data`.
+Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/shared/nxt-retro-tube`.
+
+## Mới ở 2.7
+- **Danh sách phát của kênh**: trong trang kênh bấm **L1/R1** để đổi giữa **Video** và **Danh sách phát** (gom theo bộ).
+  Mở một bộ: các tập xếp theo thứ tự, phát hết tập tự sang tập sau. Bộ nào kênh xếp tập mới lên đầu thì máy tự đảo lại
+  để xem từ tập 1; **Y** đổi thứ tự, **X** lưu cả bộ vào Thư viện.
+- **Tab Đăng ký có hàng kênh** ở trên (như YouTube trên web): từ hàng video đầu bấm **Lên**, **Trái/Phải** chọn kênh, **A** mở kênh.
+- **Ảnh đại diện thật của kênh** thay cho chữ viết tắt (kênh đăng ký và kênh gặp trong kết quả tìm kiếm).
+- **Bấm B khi đang xem** thì về đúng danh sách đã mở video (bộ, kênh, tìm kiếm, thư viện), không về thẳng trang chủ.
+- **Chọn nút cạnh trình phát**: đang xem (chưa toàn màn hình) bấm **Lên** để sang Theo dõi · Xem sau · Tải về · Chất lượng · Tốc độ, **A** để bấm.
+- **Hướng dẫn phím** ngay trong máy: Cài đặt → Hướng dẫn phím (8 phần, kể cả các thao tác bấm 2 lần, 3 lần).
+- Thư viện chứa được **30 danh sách phát** (trước là 7); đứng ở một danh sách bấm **START hai lần** để xóa.
 
 ## Mới ở 2.6
 - **Đăng ký kênh đồng bộ hai chiều** như nút Thích: kênh đăng ký trên điện thoại / máy tính hiện "đã đăng ký" trên máy và có trong tab Kênh;
@@ -42,7 +44,7 @@ Bản 2.5 đưa toàn bộ tính năng của bản thử 2.4.1 lên cả 7 bản
 - **Bộ chỉnh âm (EQ)**: Cài đặt → Âm thanh: Trầm mạnh, Giọng hát, Loa nhỏ của máy, Tai nghe, Rock / EDM.
 - **Tắt màn hình, nghe tiếp** ngay trong SELECT (vẫn dùng được nút nguồn / bảng nhanh như trước).
 
-**Cập nhật**: máy đang chạy bản 2.1 trở lên tự nhận bản 2.6 qua OTA (Cài đặt → Cập nhật & giới thiệu → Cập nhật).
+**Cập nhật**: máy đang chạy bản 2.1 trở lên tự nhận bản 2.7 qua OTA (Cài đặt → Cập nhật & giới thiệu → Cập nhật).
 
 ## Mới ở 2.4
 **Tài khoản Google & xem tiếp**
@@ -96,6 +98,8 @@ A mở mục, B quay lại, L1/R1 sang mục bên cạnh.
   Máy chưa chỉnh giờ (đồng hồ chưa đặt) thì không hiện giờ.
 - **Tab Bóng đá** mới ở Trang chủ (highlights bóng đá). Hàng tab giờ **tự cuộn** theo tab đang chọn, nên các tab sau "Trực tiếp" (Bóng đá, Mới tải lên) hiện đầy đủ tên;
   có mũi tên mờ ở mép cho biết còn tab phía trước / sau. Chế độ trẻ em có thêm tab "Vận động cho bé".
+- **Nút Home bên hông (NX Redux): sửa lỗi bấm 1 lần mà nhận 2 lần** (bảng OSD hiện rồi tắt ngay). App nhận ra trình phím của NX Redux
+  (keymon.elf) tự mở bảng nên không gửi thêm yêu cầu mở nữa; một lần bấm chỉ tính một lần (cần thả nút và cách lần trước ít nhất 0,7 giây).
 
 ## Mới ở 2.1.3
 - Chỉ thay đổi cho Smart Pro S (máy khác giữ nguyên như 2.1.2).
@@ -107,7 +111,7 @@ A mở mục, B quay lại, L1/R1 sang mục bên cạnh.
 
 ## Mới ở 2.1.1
 - **Sửa lỗi xem live chỉ được 240p:** trước đây app đưa cả danh sách chất lượng của luồng trực tiếp cho bộ phát, bộ phát tự chọn mức thấp (thường 240p).
-  Giờ app đọc danh sách đó trước và mở **đúng chất lượng đang chọn** (Tự động = 480p trên R36S; chọn 1080p / 720p / 480p / 360p cũng được áp dụng cho live).
+  Giờ app đọc danh sách đó trước và mở **đúng chất lượng đang chọn** (Tự động = 720p, 60 hình nếu live có; chọn 1080p / 720p / 480p / 360p cũng được áp dụng cho live).
   Live cũng vào nhanh hơn vì bộ phát chỉ tải một mức chất lượng. Khi nghe nền / tắt màn hình / Chỉ âm thanh, live tự chuyển sang mức nhỏ nhất và không giải mã hình (mát máy, ít dữ liệu).
 
 ## Mới ở 2.1
@@ -125,6 +129,7 @@ A mở mục, B quay lại, L1/R1 sang mục bên cạnh.
 ## Mới ở 2.0
 - **Cập nhật OTA ngay trên máy:** Cài đặt → **Cập nhật (OTA)** → A. App tự nhận ra ROM và máy đang dùng để tải đúng bản; chỉ tải phần nào có bản mới.
 - **Video thiếu nhi (made for kids) nhanh hơn nhiều:** bộ giải mã JavaScript chạy thường trú và nhớ trình phát của YouTube, nên chỉ video đầu tiên sau khi YouTube đổi trình phát còn chậm; các video sau mở gần nhanh như video thường. App nhớ cách lấy luồng nào chạy được để thử trước và lấy sẵn video kế tiếp.
+- Nút Home bên hông: một lần bấm chỉ tính một lần (không còn mở rồi tắt ngay). Khi bảng Task Manager / OSD của hệ thống đang mở, app không nhận phím nữa.
 
 ## Tính năng
 - Giao diện kiểu app YouTube trên điện thoại, phong cách retro; tiếng Việt / English.
@@ -139,32 +144,21 @@ A mở mục, B quay lại, L1/R1 sang mục bên cạnh.
 - Tua gần như tức thì trong phần đã tải; tua xa nhảy tới khung hình chính gần nhất.
 - Video 60 khung/giây luôn khớp tiếng (hiện tối đa ~30 hình/giây trên máy).
 - Hàng "Tiếp theo" cuộn được, tự tải thêm video gợi ý; tự phát video kế.
-- Nút âm lượng: hệ điều hành chỉnh loa / tai nghe, app hiện mức âm lượng; với DAC USB app tự chỉnh mức riêng.
-- Tắt đen màn hình vẫn nghe (như YouTube Premium) từ Bảng nhanh (R3). Bấm nút bất kỳ (trừ âm lượng) để bật lại.
-- R3 (phím nóng) bấm riêng: Bảng nhanh (Tiếp tục · Tắt màn hình · Nghe nền · Thoát).
+- Nút âm lượng cho loa, tai nghe 3.5 mm và DAC USB, có hiện mức âm lượng.
+- Nút nguồn: tắt đen màn hình, vẫn nghe (như YouTube Premium). Bấm nút bất kỳ (trừ âm lượng) để bật lại.
+- Nút Home bên hông: Bảng nhanh (Tiếp tục · Tắt màn hình · Nghe nền · Thoát). Nút logo TrimUI: thoát ngay.
 - Nghe nền (về menu máy, tiếng vẫn phát), Xem sau, Theo dõi kênh, Tải về máy (720p) xem không cần mạng.
-- USB DAC qua PipeWire của hệ thống, ở cả hai cổng USB-C (cổng sạc: bật trong Cài đặt).
+- USB DAC ở cả hai cổng USB-C (cổng sạc: bật trong Cài đặt).
 - Cài đặt: ngôn ngữ, chất lượng mặc định, tự phát tiếp, lấy luồng trước, Telex, bù trễ tiếng–hình, đầu ra âm thanh, cổng sạc cho DAC, kiểu trang chủ, đổi phím, xóa bộ nhớ đệm / lịch sử / lượt tìm, phiên bản, tác giả · ủng hộ, phụ đề (chế độ, ngôn ngữ, cỡ chữ), chế độ trẻ em.
-
 
 ## Phím
 | Màn hình | Phím |
 |---|---|
-| Mọi nơi | R3 (bấm riêng): Bảng nhanh · R3 + Lên/Xuống: độ sáng (dArkOS) · Âm lượng ± |
+| Mọi nơi | Logo TrimUI: thoát · Home bên hông: Bảng nhanh · Nguồn: tắt/bật màn hình · Âm lượng ± |
 | Trang chủ / Thư viện | D-pad chọn · A xem · Y tìm kiếm · X Xem sau · L1/R1 đổi mục con · L2/R2 đổi mục chính · START làm mới · SELECT mở lại video đang phát · B thoát (đang phát thì hỏi Nghe nền / Thoát) |
 | Xem video | A phát/dừng · Trái/Phải tua 10 giây · L2/R2 tua 60 giây · L1/R1 video trước/sau · X chất lượng · START tốc độ · SELECT tùy chọn · Y toàn màn hình · Xuống: hàng Tiếp theo · B về |
 | Hàng Tiếp theo | Trái/Phải chọn (không tua) · L2/R2 nhảy 4 video · A xem · Lên quay lại |
 | Tìm kiếm | A gõ (phím #+= mở ký hiệu, abc về chữ) · B xóa chữ / về · Y dấu cách · X xóa hết · SELECT Telex · START tìm · L1/R1 lượt tìm gần đây · L2/R2 đổi mục chính |
-
-
-## Khác với bản NextUI / NX Redux
-- **SELECT và START** dùng được (trên R36S chúng là phím F1 / F2 của tay cầm, bản muOS không đọc được nên bị lỗi).
-- **R3 (phím nóng)** bấm riêng rồi thả: mở **Bảng nhanh** (Tiếp tục · Tắt màn hình · Nghe nền · Thoát) — R36S không có nút Home / logo.
-  R3 + Lên/Xuống vẫn là chỉnh độ sáng của dArkOS (app không di chuyển khi đó).
-- Màn hình 640×480 và CPU Cortex-A35: chất lượng **Tự động = 480p 30 khung/giây** (vừa khít màn hình, nhẹ máy, mát). Vẫn chọn được 720p trong menu chất lượng.
-- Âm thanh qua ALSA của dArkOS; nút âm lượng do dArkOS (ogage) xử lý, app hiện mức âm lượng (đọc bằng `current_volume`); Bảng nhanh Trái/Phải chỉnh âm lượng hệ thống.
-- Trong lúc phát video, app giữ cho dArkOS không tự ngủ vì không bấm phím (giống khi xem bằng ffplay/Kodi).
-- Không cần thư viện cài thêm: app chỉ dùng SDL2 có sẵn của dArkOS.
 
 ## Chế độ trẻ em (phụ huynh quản lý)
 Vào **Cài đặt → Chế độ trẻ em**. Lần đầu bật sẽ yêu cầu đặt **mã PIN phụ huynh 4 số** (nhập 2 lần).
@@ -201,7 +195,7 @@ Xem video nói tiếng nước ngoài, app tự hiện **phụ đề dịch sang
 - **Ngôn ngữ phụ đề:** "Theo app" (Tiếng Việt hoặc English theo ngôn ngữ giao diện), hoặc chọn: Tiếng Việt, English, Español,
   Français, Deutsch, Português, Italiano, Bahasa Indonesia (có sẵn), **Tiếng Hàn, Tiếng Nhật, Tiếng Trung, Tiếng Thái** (cần tải gói chữ).
 - **Tải gói chữ:** chọn ngôn ngữ đó rồi bấm **A** (một lần; Hàn ~10 MB, Nhật ~9 MB, Trung ~17 MB, Thái <1 MB). Phần ghi chú hiện % đang tải.
-  Gói chữ (font Noto Sans của Google, giấy phép SIL OFL) được kiểm tra mã SHA-256 rồi lưu vào `ports/nxt-retro-tube/data/fonts`. Xóa thư mục đó để gỡ.
+  Gói chữ (font Noto Sans của Google, giấy phép SIL OFL) được kiểm tra mã SHA-256 rồi lưu vào `.userdata/shared/nxt-retro-tube/fonts`. Xóa thư mục đó để gỡ.
 - **Cỡ chữ phụ đề:** Nhỏ / Vừa / Lớn.
 
 **Đổi riêng cho video đang xem:** SELECT (Tùy chọn video) → **Phụ đề**, bấm A để đổi: Theo cài đặt → Bật · dịch (sang ngôn ngữ của bạn)
@@ -221,16 +215,13 @@ video đã tải về máy xem không cần mạng thì không có phụ đề.
 - Cần Wi-Fi và còn trống khoảng 100 MB trên thẻ nhớ khi cập nhật yt-dlp / Deno.
 
 ## Nghe nền
-Đang phát video, bấm B ở trang chủ → "Nghe nền (chỉ tiếng)" (hoặc Home → Nghe nền): app tắt hình, về EmulationStation, tiếng vẫn phát và tự chuyển video tiếp.
-Mở lại app để quay về đúng chỗ đang nghe.
-
-## Tắt màn hình vẫn nghe
-Bấm R3 → Bảng nhanh → **Tắt màn hình · vẫn nghe**: màn hình tắt, tiếng vẫn phát. Bấm nút bất kỳ (trừ âm lượng) để bật lại.
-Nút nguồn vẫn là của dArkOS (cho máy ngủ — khi đó tiếng dừng).
+Đang phát video, bấm B ở trang chủ → "Nghe nền (chỉ tiếng)": app tắt hình, về menu, tiếng vẫn phát và tự chuyển video tiếp.
+Mở lại app từ Tools để quay về đúng chỗ đang nghe.
 
 ## Đổi phím
 Cài đặt → Đổi phím: chọn chức năng, bấm A rồi bấm nút muốn gán (hai chức năng sẽ đổi chỗ cho nhau).
-Y = đổi chỗ A/B nhanh, X = về mặc định. D-pad, R3 (phím nóng) và nút âm lượng không đổi được.
+Y = đổi chỗ A/B nhanh, X = về mặc định. D-pad và nút logo không đổi được.
+
 
 ## Tác giả & ủng hộ
 NXT Retro Tube do **Nguyễn Xuân Thông** làm. Nếu thấy app hữu ích, bạn có thể ủng hộ tác giả:
@@ -241,6 +232,6 @@ NXT Retro Tube do **Nguyễn Xuân Thông** làm. Nếu thấy app hữu ích, b
 Trong app: Cài đặt → **Tác giả · Ủng hộ**.
 
 ## Khi có lỗi
-Gửi lại `NXT_Tube_Log.txt` (trong `ports/nxt-retro-tube`), `data/cache/nxt-retro-tube-run.txt` và `data/cache/ytdlp-helper-0.txt`.
+Gửi lại `NXT_Tube_Log.txt` (trong thư mục app) và `.userdata/shared/nxt-retro-tube/cache/ytdlp-helper-0.txt`.
 
 Ứng dụng không liên kết với YouTube/Google. Giấy phép: thư mục `licenses`.

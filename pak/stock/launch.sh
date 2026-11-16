@@ -1,5 +1,5 @@
 #!/bin/sh
-# NXT Retro Tube 2.6 — by Nguyễn Xuân Thông — official TrimUI firmware (Stock), TrimUI Brick / Brick Pro
+# NXT Retro Tube 2.7 — by Nguyễn Xuân Thông — official TrimUI firmware (Stock), TrimUI Brick / Brick Pro
 DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)" || exit 1
 cd "$DIR" || exit 1
 STOCK_DATA="/mnt/SDCARD/.userdata/nxt-tube-stock"
@@ -11,6 +11,8 @@ mkdir -p "$USERDATA_PATH" "$SHARED_USERDATA_PATH/nxt-retro-tube/cache" "$NXT_TUB
 export LD_LIBRARY_PATH="$DIR/bin/tg5040:/usr/trimui/lib:${LD_LIBRARY_PATH:-}:/usr/lib:/lib"
 export SDL_VIDEODRIVER=mali SDL_AUDIODRIVER=alsa LIBASOUND_THREAD_SAFE=0
 chmod +x "$DIR/bin/deno" "$DIR/bin/yt-dlp-runtime/yt-dlp" "$DIR/bin/tg5040/nxt-retro-tube.elf" 2>/dev/null || :
+# one look for the NXT apps in Apps/: the colour icons, sized and edged for this launcher (see sync-nxt-icons.sh)
+sh "$DIR/sync-nxt-icons.sh" > "$SHARED_USERDATA_PATH/nxt-retro-tube/cache/nxt-icons.txt" 2>&1 || :
 BIN="$DIR/bin/tg5040/nxt-retro-tube.elf"
 LOG="$SHARED_USERDATA_PATH/nxt-retro-tube/cache/nxt-retro-tube-run.txt"
 PID=""
