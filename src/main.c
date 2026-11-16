@@ -162,6 +162,7 @@ static struct {
     char lastQuery[300], channelId[48];
     /* 2.7 channel page: 0 = its videos, 1 = its playlists, 2 = inside one playlist */
     int stripSel; float stripScroll;
+    Screen backScreen;   /* the browsing screen last shown before the watch page */
     int chanMode, chanPlSel; bool plSaveWhenLoaded, chanFromHome; char chanTitle[160], plId[64], plTitle[200];
     /* library */
     int libTab, libSel; float lscroll;
@@ -1883,7 +1884,10 @@ static void handle_key(Key k) {
             }
             else if (A.channelView && A.chanMode == 2 && k == K_X) { if (A.searchJob && !A.found.count) A.plSaveWhenLoaded = true; else chan_savePlaylist(); }
             else if (A.channelView && A.chanMode == 2 && k == K_B) { int back = A.chanPlSel; A.chanMode = 1; A.plSaveWhenLoaded = false; chan_load(); A.chanPlSel = back; return; }
-            else if (k == K_A && A.found.count) { open_video(&A.found.items[A.resultSel], &A.found, A.resultSel); A.screen = SC_WATCH; }
+            else if (k == K_A && A.found.count) {
+                open_video(&A.found.items[A.resultSel], &A.found, A.resultSel); A.screen = SC_WATCH;
+                if (A.channelView && A.chanMode == 2) A.moreDone = true;   /* a playlist plays its own episodes in order and stops at the last: no unrelated suggestions after it */
+            }
             else if (k == K_X && A.found.count) { toast(Store_toggleLater(&A.found.items[A.resultSel]) ? "Đã thêm vào Xem sau" : "Đã bỏ khỏi Xem sau"); Store_save(); }
             else if (k == K_B) { if (A.channelView) { if (A.chanFromHome) { A.screen = SC_HOME; A.focus = 3; } else { A.screen = SC_LIBRARY; A.libTab = 2; } A.channelView = false; } else A.results = false; }
             else if (k == K_Y) { A.screen = SC_HOME; A.focus = 0; }
@@ -1928,7 +1932,11 @@ static void handle_key(Key k) {
         return;
     }
     case SC_WATCH: {
-        if (k == K_B) { A.screen = SC_HOME; A.focus = 0; return; }
+        if (k == K_B) {   /* back to the list the video was opened from (a playlist, a channel, search, library) */
+            A.screen = A.backScreen == SC_SEARCH || A.backScreen == SC_LIBRARY ? A.backScreen : SC_HOME;
+            if (A.screen == SC_HOME) A.focus = 0;
+            return;
+        }
         if (k == K_Y) { A.screen = SC_FULL; A.osd = true; A.osdUntil = SDL_GetTicks() + 3000; return; }
         int nnext = A.queue.count - A.qpos - 1; if (nnext < 0) nnext = 0;
         if (A.watchFocus == 1) {
@@ -3792,6 +3800,7 @@ static void update(void) {
         else if (st.audio_only && S.autoplay && !A.cur.live) start_radio(true);   /* music mode: endless, like YouTube Music */
     }
     radio_poll();
+    if (A.screen == SC_HOME || A.screen == SC_SEARCH || A.screen == SC_LIBRARY) A.backScreen = A.screen;
     if (A.hasCur && A.cur.channel_id[0] && Account_signedIn() && !K.enabled) {   /* the video's channel is subscribed on the account: follow it here too */
         int sub = Account_subStateTake(A.cur.id);
         if (sub >= 0 && A.subLocalAt && !strcmp(A.subLocalId, A.cur.channel_id) && SDL_GetTicks() - A.subLocalAt < 10 * 60 * 1000) sub = -1;   /* just changed here: keep it */
