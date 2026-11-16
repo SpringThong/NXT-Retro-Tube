@@ -106,6 +106,46 @@ static JSON_Value *post_json(const char *url, const char *body, const char *extr
     if (!v) snprintf(err, en, "bad JSON");
     return v;
 }
+/* signatureTimestamp of the current YouTube player: the TV player call answers "please reload
+ * this page" without it (and then carries no watch-history URLs). Read once from the player JS
+ * whose version iframe_api names, kept in sts.txt until the version changes (checked once a day). */
+static int sts_get(void) {
+    static int cached; static time_t checked;
+    char path[1300]; snprintf(path, sizeof(path), "%s/sts.txt", paths.data);
+    char hash[64] = ""; int sts = 0; long when = 0;
+    FILE *f = fopen(path, "r");
+    if (f) { if (fscanf(f, "%63s %d %ld", hash, &sts, &when) != 3) sts = 0; fclose(f); }
+    time_t now = time(NULL);
+    if (cached && now - checked < 3600) return cached;
+    if (sts > 0 && now - when < 86400) { cached = sts; checked = now; return sts; }
+    char err[200] = "", url[400];
+    snprintf(url, sizeof(url), "%s/iframe_api", base());
+    char *api = Innertube_http(url, NULL, "Referer: https://www.youtube.com/\r\n", TV_UA, err, sizeof(err));
+    char h[64] = "";
+    const char *p = api ? strstr(api, "player\\/") : NULL;
+    if (p) { p += 8; size_t k = 0; while (*p && *p != '\\' && *p != '/' && k + 1 < sizeof(h)) h[k++] = *p++; h[k] = 0; }
+    free(api);
+    if (!h[0]) { Log_msg("account: player version not found (%s)", err); checked = now; cached = sts; return sts; }
+    if (sts > 0 && !strcmp(h, hash)) { cached = sts; checked = now; f = fopen(path, "w"); if (f) { fprintf(f, "%s %d %ld\n", h, sts, (long)now); fclose(f); } return sts; }
+    static const char *js[2] = {"tv-player-ias.vflset/tv-player-ias.js", "player_ias.vflset/en_US/base.js"};
+    int got = 0;
+    for (int i = 0; i < 2 && !got; i++) {
+        snprintf(url, sizeof(url), "%s/s/player/%s/%s", base(), h, js[i]);
+        char *body = Innertube_http(url, NULL, "Referer: https://www.youtube.com/\r\n", TV_UA, err, sizeof(err));
+        if (!body) continue;
+        const char *q = strstr(body, "signatureTimestamp:");
+        if (q) got = atoi(q + 19);
+        if (!got && (q = strstr(body, ",sts:"))) got = atoi(q + 5);
+        free(body);
+    }
+    if (got > 0) {
+        f = fopen(path, "w"); if (f) { fprintf(f, "%s %d %ld\n", h, got, (long)now); fclose(f); }
+        Log_msg("account: player %s, signatureTimestamp %d", h, got);
+        sts = got;
+    } else Log_msg("account: signatureTimestamp not found in player %s (%s)", h, err);
+    cached = sts; checked = now;
+    return sts;
+}
 /* the TV app's client id / secret from its own base.js, if the built-in ones are refused */
 static bool discover_client(void) {
     char err[200], url[300];
@@ -197,9 +237,11 @@ static JSON_Value *tv_call(const char *endpoint, const char *extra, char *err, s
     char url[300]; snprintf(url, sizeof(url), "%s/youtubei/v1/%s?prettyPrint=false", base(), endpoint);
     JSON_Value *v = NULL;
     for (int attempt = 0; attempt < 2 && !v; attempt++) {
-        char auth[2200], h[2400];
+        char auth[2200], h[3300];
         if (!bearer(auth, sizeof(auth), attempt > 0, err, en)) break;
         snprintf(h, sizeof(h), "%sX-YouTube-Client-Name: " TV_NAME_ID "\r\nX-YouTube-Client-Version: " TV_VERSION "\r\n", auth);
+        const char *vis = !strcmp(endpoint, "player") ? Innertube_visitor() : NULL;   /* the player wants the visitor too */
+        if (vis && *vis) { size_t l = strlen(h); snprintf(h + l, sizeof(h) - l, "X-Goog-Visitor-Id: %s\r\n", vis); }
         v = post_json(url, body, h, err, en);
         if (!v && !strstr(err, "401") && !strstr(err, "Unauthorized")) break;
     }
@@ -652,7 +694,9 @@ static void do_job(int kind, const char *id, double pos, double dur, bool paused
         const char *clients[2][3] = {{"TVHTML5", TV_VERSION, TV_NAME_ID}, {"TVHTML5_SIMPLY_EMBEDDED_PLAYER", "2.0", "85"}};
         snprintf(w_vid, sizeof(w_vid), "%s", id); new_cpn(); w_last_et = 0; w_play[0] = w_time[0] = 0;
         for (int c = 0; c < 2 && !w_play[0]; c++) {
-            snprintf(extra, sizeof(extra), "\"videoId\":\"%s\",\"contentCheckOk\":true,\"racyCheckOk\":true,\"playbackContext\":{\"contentPlaybackContext\":{\"html5Preference\":\"HTML5_PREF_WANTS\"}}", id);
+            int sts = sts_get();
+            char stsp[48] = ""; if (sts > 0) snprintf(stsp, sizeof(stsp), ",\"signatureTimestamp\":%d", sts);
+            snprintf(extra, sizeof(extra), "\"videoId\":\"%s\",\"contentCheckOk\":true,\"racyCheckOk\":true,\"playbackContext\":{\"contentPlaybackContext\":{\"html5Preference\":\"HTML5_PREF_WANTS\"%s}}", id, stsp);
             err[0] = 0;
             JSON_Value *v = c == 0 ? tv_call("player", extra, err, sizeof(err)) : tv_call_as(clients[c][0], clients[c][1], clients[c][2], "player", extra, err, sizeof(err));
             JSON_Object *o = json_value_get_object(v);
