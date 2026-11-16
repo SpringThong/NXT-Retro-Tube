@@ -146,6 +146,38 @@ static int sts_get(void) {
     cached = sts; checked = now;
     return sts;
 }
+/* the TV app's current clientVersion, from youtube.com/tv itself: the player call answers
+ * "please reload this page" to a version it no longer takes (feeds still accept older ones) */
+static const char *tv_live_version(void) {
+    static char ver[48]; static time_t checked;
+    time_t now = time(NULL);
+    if (ver[0] && now - checked < 6 * 3600) return ver;
+    char path[1300]; snprintf(path, sizeof(path), "%s/tvver.txt", paths.data);
+    long when = 0; char saved[48] = "";
+    FILE *f = fopen(path, "r");
+    if (f) { if (fscanf(f, "%47s %ld", saved, &when) != 2) saved[0] = 0; fclose(f); }
+    if (saved[0] && now - when < 86400) { snprintf(ver, sizeof(ver), "%s", saved); checked = now; return ver; }
+    char err[200] = "", url[300]; snprintf(url, sizeof(url), "%s/tv", base());
+    char *page = Innertube_http(url, NULL, "Referer: https://www.youtube.com/\r\n", TV_UA, err, sizeof(err));
+    const char *keys[3] = {"\"INNERTUBE_CLIENT_VERSION\":\"", "\"clientVersion\":\"7.", "INNERTUBE_CONTEXT_CLIENT_VERSION\":\""};
+    char found[48] = "";
+    for (int i = 0; page && i < 3 && !found[0]; i++) {
+        const char *q = strstr(page, keys[i]);
+        if (!q) continue;
+        q += strlen(keys[i]); if (i == 1) q -= 2;
+        size_t k = 0; while (*q && *q != '"' && k + 1 < sizeof(found)) found[k++] = *q++;
+        found[k] = 0;
+        if (strncmp(found, "7.", 2)) found[0] = 0;
+    }
+    free(page);
+    if (found[0]) {
+        snprintf(ver, sizeof(ver), "%s", found);
+        f = fopen(path, "w"); if (f) { fprintf(f, "%s %ld\n", found, (long)now); fclose(f); }
+        Log_msg("account: TV app version %s", found);
+    } else { Log_msg("account: TV app version not found (%s)", err[0] ? err : "page"); snprintf(ver, sizeof(ver), "%s", saved[0] ? saved : TV_VERSION); }
+    checked = now;
+    return ver;
+}
 /* the TV app's client id / secret from its own base.js, if the built-in ones are refused */
 static bool discover_client(void) {
     char err[200], url[300];
@@ -252,13 +284,20 @@ static JSON_Value *tv_call(const char *endpoint, const char *extra, char *err, s
 /* the same call as another TV client (embedded TV player), for the history URLs */
 static JSON_Value *tv_call_as(const char *name, const char *ver, const char *id, const char *endpoint, const char *extra, char *err, size_t en) {
     size_t n = strlen(extra) + 600; char *body = malloc(n); if (!body) return NULL;
-    snprintf(body, n, "{\"context\":{\"client\":{\"clientName\":\"%s\",\"clientVersion\":\"%s\",\"hl\":\"%s\",\"gl\":\"VN\"},"
-             "\"thirdParty\":{\"embedUrl\":\"https://www.youtube.com/\"}},%s}", name, ver, S.lang ? "en" : "vi", extra);
+    if (!strcmp(name, "TVHTML5"))
+        snprintf(body, n, "{\"context\":{\"client\":{\"clientName\":\"TVHTML5\",\"clientVersion\":\"%s\",\"hl\":\"%s\",\"gl\":\"VN\","
+                 "\"tvAppInfo\":{\"appQuality\":\"TV_APP_QUALITY_FULL_ANIMATION\",\"zylonLeftNav\":true},\"webpSupport\":false,\"animatedWebpSupport\":false},"
+                 "\"user\":{\"enableSafetyMode\":false}},%s}", ver, S.lang ? "en" : "vi", extra);
+    else
+        snprintf(body, n, "{\"context\":{\"client\":{\"clientName\":\"%s\",\"clientVersion\":\"%s\",\"hl\":\"%s\",\"gl\":\"VN\"},"
+                 "\"thirdParty\":{\"embedUrl\":\"https://www.youtube.com/\"}},%s}", name, ver, S.lang ? "en" : "vi", extra);
     char url[300]; snprintf(url, sizeof(url), "%s/youtubei/v1/%s?prettyPrint=false", base(), endpoint);
     JSON_Value *v = NULL;
-    char auth[2200], h[2400];
+    char auth[2200], h[3300];
     if (bearer(auth, sizeof(auth), false, err, en)) {
         snprintf(h, sizeof(h), "%sX-YouTube-Client-Name: %s\r\nX-YouTube-Client-Version: %s\r\n", auth, id, ver);
+        const char *vis = Innertube_visitor();
+        if (vis && *vis) { size_t l = strlen(h); snprintf(h + l, sizeof(h) - l, "X-Goog-Visitor-Id: %s\r\n", vis); }
         v = post_json(url, body, h, err, en);
     }
     free(body);
@@ -691,20 +730,24 @@ static void do_job(int kind, const char *id, double pos, double dur, bool paused
         /* the TV app's own player answer for this account carries the history URLs; when YouTube
          * answers it without them (it may ask the TV player for more checks), the ones from the
          * normal stream answer are used: the pings count for whoever sends the account token */
-        const char *clients[2][3] = {{"TVHTML5", TV_VERSION, TV_NAME_ID}, {"TVHTML5_SIMPLY_EMBEDDED_PLAYER", "2.0", "85"}};
+        const char *live = tv_live_version();
+        const char *clients[3][3] = {{"TVHTML5", live, TV_NAME_ID}, {"TVHTML5", TV_VERSION, TV_NAME_ID}, {"TVHTML5_SIMPLY_EMBEDDED_PLAYER", "2.0", "85"}};
         snprintf(w_vid, sizeof(w_vid), "%s", id); new_cpn(); w_last_et = 0; w_play[0] = w_time[0] = 0;
-        for (int c = 0; c < 2 && !w_play[0]; c++) {
-            int sts = sts_get();
+        int sts0 = sts_get();
+        Log_msg("account history %s: asking as TV %s, signatureTimestamp %d", id, live, sts0);
+        for (int c = 0; c < 3 && !w_play[0]; c++) {
+            if (c == 1 && !strcmp(live, TV_VERSION)) continue;
+            int sts = sts0;
             char stsp[48] = ""; if (sts > 0) snprintf(stsp, sizeof(stsp), ",\"signatureTimestamp\":%d", sts);
             snprintf(extra, sizeof(extra), "\"videoId\":\"%s\",\"contentCheckOk\":true,\"racyCheckOk\":true,\"playbackContext\":{\"contentPlaybackContext\":{\"html5Preference\":\"HTML5_PREF_WANTS\"%s}}", id, stsp);
             err[0] = 0;
-            JSON_Value *v = c == 0 ? tv_call("player", extra, err, sizeof(err)) : tv_call_as(clients[c][0], clients[c][1], clients[c][2], "player", extra, err, sizeof(err));
+            JSON_Value *v = c == 1 ? tv_call("player", extra, err, sizeof(err)) : tv_call_as(clients[c][0], clients[c][1], clients[c][2], "player", extra, err, sizeof(err));
             JSON_Object *o = json_value_get_object(v);
             const char *p = json_object_dotget_string(o, "playbackTracking.videostatsPlaybackUrl.baseUrl");
             const char *t = json_object_dotget_string(o, "playbackTracking.videostatsWatchtimeUrl.baseUrl");
             if (p) snprintf(w_play, sizeof(w_play), "%s", p);
             if (t) snprintf(w_time, sizeof(w_time), "%s", t);
-            if (!p) Log_msg("account history %s: %s player has no tracking (%s %s)", id, clients[c][0],
+            if (!p) Log_msg("account history %s: %s %s player has no tracking (%s %s)", id, clients[c][0], clients[c][1],
                             v ? json_object_dotget_string(o, "playabilityStatus.status") ? json_object_dotget_string(o, "playabilityStatus.status") : "?" : "error",
                             v ? (json_object_dotget_string(o, "playabilityStatus.reason") ? json_object_dotget_string(o, "playabilityStatus.reason") : "") : err);
             json_value_free(v);
