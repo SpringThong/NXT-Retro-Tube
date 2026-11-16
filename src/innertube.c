@@ -340,6 +340,10 @@ static void take_video(JSON_Object *v, VideoList *out) {
         const char *cid = json_object_dotget_string(run0, "navigationEndpoint.browseEndpoint.browseId");
         if (cid) snprintf(it.channel_id, sizeof(it.channel_id), "%s", cid);
     }
+    {   /* the channel's little picture comes with every search result: remember where it is */
+        const char *pic = json_object_get_string(json_array_get_object(json_object_dotget_array(v, "channelThumbnailSupportedRenderers.channelThumbnailWithLinkRenderer.thumbnail.thumbnails"), 0), "url");
+        if (pic && it.channel_id[0]) Account_avatarSet(it.channel_id, pic);
+    }
     const char *len = run_text(v, "lengthText");
     it.duration = duration_of(len);
     const char *views = run_text(v, "viewCountText");

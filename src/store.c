@@ -182,7 +182,7 @@ int Store_recentChannels(char out[][128], int max) {
 }
 
 /* ---------- local playlists (playlists.json): "Yêu thích" + up to 7 of your own ---------- */
-#define PL_MAX 8
+#define PL_MAX PL_LIMIT
 static struct { char name[48]; VideoList list; } pls[PL_MAX];
 static int npl; static bool pl_loaded;
 static void pl_path(char *p, size_t n) { snprintf(p, n, "%s/playlists.json", paths.data); }

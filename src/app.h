@@ -292,6 +292,8 @@ int Account_likeState(const char *id);
 void Account_likeSet(const char *id, bool on);
 int Account_subStateTake(const char *id);              /* the account is subscribed to this video's channel: 1 / 0 once, -1 not known */
 void Account_subscribe(const char *channel_id, bool on);
+void Account_avatarSet(const char *cid, const char *url);       /* learnt a channel's picture address (search results, the account) */
+void Account_avatarFlush(void);                                 /* write new ones to the card (call now and then) */
 bool Account_avatarUrl(const char *key, char *out, size_t n);   /* "@<last 14 of channel id>" -> its picture address */
 bool Account_avatarKey(const char *cid, char *key16);          /* this channel has a known picture: the thumbnail key for it */
 void Account_channelsFetch(void);                      /* background: the channels the account is subscribed to */
@@ -446,6 +448,7 @@ bool Export_audio(const VideoItem *v, int kind, const char *src, char *msg, size
 int Export_all(char *msg, size_t n);
 int Import_takeout(char *msg, size_t n);
 /* store.c: local playlists */
+#define PL_LIMIT 31        /* "Yêu thích" + 30 playlists of your own */
 int PL_count(void);
 const char *PL_name(int i);
 const VideoList *PL_list(int i);

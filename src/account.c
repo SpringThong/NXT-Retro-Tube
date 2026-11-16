@@ -775,8 +775,8 @@ static int w_pings;
 /* ---------- the account's subscribed channels (so channels subscribed on a phone show up here) ---------- */
 static VideoItem ch_found[400]; static int ch_n; static bool ch_ready;
 /* channel pictures: "channel id -> picture address", learnt from the account's channel list, kept in data/avatars.txt */
-#define AV_MAX 600
-static struct { char cid[28]; char url[230]; } av[AV_MAX]; static int av_n; static bool av_loaded;
+#define AV_MAX 1500
+static struct { char cid[28]; char url[230]; } av[AV_MAX]; static int av_n, av_next; static bool av_loaded, av_dirty;
 static pthread_mutex_t av_lock = PTHREAD_MUTEX_INITIALIZER;
 static void av_load_locked(void) {
     if (av_loaded) return;
@@ -795,14 +795,23 @@ static void av_set(const char *cid, const char *url) {   /* caller holds av_lock
     char full[230]; snprintf(full, sizeof(full), "%s%s", !strncmp(url, "//", 2) ? "https:" : "", url);
     char *eq = strrchr(full, '=');           /* "=s88-c-k-…": ask for 160 px, as JPEG */
     if (eq && eq[1] == 's') snprintf(eq, sizeof(full) - (eq - full), "=s160-c-k-rj");
-    for (int i = 0; i < av_n; i++) if (!strcmp(av[i].cid, cid)) { snprintf(av[i].url, 230, "%s", full); return; }
-    if (av_n < AV_MAX) { snprintf(av[av_n].cid, 28, "%s", cid); snprintf(av[av_n].url, 230, "%s", full); av_n++; }
+    for (int i = 0; i < av_n; i++) if (!strcmp(av[i].cid, cid)) { if (strcmp(av[i].url, full)) { snprintf(av[i].url, 230, "%s", full); av_dirty = true; } return; }
+    int k = av_n < AV_MAX ? av_n++ : (av_next = (av_next + 1) % AV_MAX);   /* full: the oldest ones make room */
+    snprintf(av[k].cid, 28, "%s", cid); snprintf(av[k].url, 230, "%s", full); av_dirty = true;
 }
 static void av_save_locked(void) {
     char path[1200], tmp[1210]; snprintf(path, sizeof(path), "%s/avatars.txt", paths.data); snprintf(tmp, sizeof(tmp), "%s.tmp", path);
     FILE *f = fopen(tmp, "w"); if (!f) return;
     for (int i = 0; i < av_n; i++) fprintf(f, "%s %s\n", av[i].cid, av[i].url);
     if (!fclose(f)) rename(tmp, path);
+    av_dirty = false;
+}
+void Account_avatarSet(const char *cid, const char *url) {
+    if (!cid || strlen(cid) != 24 || !url) return;
+    pthread_mutex_lock(&av_lock); av_load_locked(); av_set(cid, url); pthread_mutex_unlock(&av_lock);
+}
+void Account_avatarFlush(void) {
+    pthread_mutex_lock(&av_lock); if (av_dirty) av_save_locked(); pthread_mutex_unlock(&av_lock);
 }
 /* key = "@" + the last 14 letters of a channel id (thumbnail names are short). The picture address, if known. */
 bool Account_avatarUrl(const char *key, char *out, size_t n) {
