@@ -521,6 +521,8 @@ static bool parse_stream_obj(JSON_Object *o, StreamInfo *s) {
     parse_chapters(o, s);
     scopy(s->description, sizeof(s->description), s->description);
     parse_storyboard(o, s);
+    scopy(s->track_pb, sizeof(s->track_pb), json_object_get_string(o, "track_playback"));
+    scopy(s->track_wt, sizeof(s->track_wt), json_object_get_string(o, "track_watchtime"));
     if (s->nchap || s->sb) Log_msg("stream %s: %d chapters, %s seek preview", s->info.id, s->nchap, s->sb ? "with" : "no");
     JSON_Array *formats = json_object_get_array(o, "formats");
     int best_audio_score = -1, best_hls_height = -1;

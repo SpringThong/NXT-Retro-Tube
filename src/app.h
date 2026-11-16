@@ -106,6 +106,7 @@ typedef struct {
     char *sb;                 /* seek preview sprites: "url-with-$M\tw\th\tcols\trows\tinterval_s\tcount" */
     struct { double t; char title[72]; } chap[48];   /* chapters (yt-dlp list or "0:00 Intro" lines in the description) */
     int nchap;
+    char track_pb[1400], track_wt[1400];   /* playbackTracking URLs from the player answer (history pings) */
     long long likes;
     StreamFormat video[MAX_FORMATS];
     int nvideo;
@@ -281,7 +282,7 @@ extern Settings S;
 void Account_init(void);
 bool Account_signedIn(void);
 double Account_resumeSeconds(const char *id, double duration);
-void Account_watchStart(const char *id, double pos, double dur);    /* 2.4.1: history / continue watching on the account */
+void Account_watchStart(const char *id, double pos, double dur, const char *track_pb, const char *track_wt);    /* 2.4.1: history / continue watching on the account */
 void Account_watchTime(const char *id, double pos, double dur, bool paused);
 void Account_like(const char *id, bool on);
 void Account_likeStateFetch(const char *id);

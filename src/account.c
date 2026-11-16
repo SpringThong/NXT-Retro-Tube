@@ -207,6 +207,21 @@ static JSON_Value *tv_call(const char *endpoint, const char *extra, char *err, s
     return v;
 }
 
+/* the same call as another TV client (embedded TV player), for the history URLs */
+static JSON_Value *tv_call_as(const char *name, const char *ver, const char *id, const char *endpoint, const char *extra, char *err, size_t en) {
+    size_t n = strlen(extra) + 600; char *body = malloc(n); if (!body) return NULL;
+    snprintf(body, n, "{\"context\":{\"client\":{\"clientName\":\"%s\",\"clientVersion\":\"%s\",\"hl\":\"%s\",\"gl\":\"VN\"},"
+             "\"thirdParty\":{\"embedUrl\":\"https://www.youtube.com/\"}},%s}", name, ver, S.lang ? "en" : "vi", extra);
+    char url[300]; snprintf(url, sizeof(url), "%s/youtubei/v1/%s?prettyPrint=false", base(), endpoint);
+    JSON_Value *v = NULL;
+    char auth[2200], h[2400];
+    if (bearer(auth, sizeof(auth), false, err, en)) {
+        snprintf(h, sizeof(h), "%sX-YouTube-Client-Name: %s\r\nX-YouTube-Client-Version: %s\r\n", auth, id, ver);
+        v = post_json(url, body, h, err, en);
+    }
+    free(body);
+    return v;
+}
 /* ---------- account name ---------- */
 static const char *text_of(JSON_Object *t, char *buf, size_t n) {
     buf[0] = 0;
@@ -597,6 +612,7 @@ static struct { int kind; char id[48]; double pos, dur; bool paused, on; } wq[16
 static int wq_n;
 static char w_vid[16], w_cpn[20], w_play[2048], w_time[2048];
 static double w_last_et;
+static char fb_play[1400], fb_time[1400];
 enum { WJ_START = 1, WJ_TIME, WJ_LIKE, WJ_SUB, WJ_LSTATE };
 static char ls_id[16]; static int ls_val = -1;   /* like state of a video as the account sees it */
 static const char *find_str(JSON_Value *v, const char *key, int depth) {
@@ -630,15 +646,27 @@ static void ping(const char *base_url, const char *extra) {
 static void do_job(int kind, const char *id, double pos, double dur, bool paused, bool on) {
     char err[300] = "", extra[200];
     if (kind == WJ_START) {
-        snprintf(extra, sizeof(extra), "\"videoId\":\"%s\",\"playbackContext\":{\"contentPlaybackContext\":{\"html5Preference\":\"HTML5_PREF_WANTS\"}}", id);
-        JSON_Value *v = tv_call("player", extra, err, sizeof(err));
-        JSON_Object *o = json_value_get_object(v);
-        const char *p = json_object_dotget_string(o, "playbackTracking.videostatsPlaybackUrl.baseUrl");
-        const char *t = json_object_dotget_string(o, "playbackTracking.videostatsWatchtimeUrl.baseUrl");
-        snprintf(w_vid, sizeof(w_vid), "%s", id); new_cpn(); w_last_et = 0;
-        snprintf(w_play, sizeof(w_play), "%s", p ? p : ""); snprintf(w_time, sizeof(w_time), "%s", t ? t : "");
-        json_value_free(v);
-        if (!w_play[0]) { Log_msg("account history %s: no tracking URLs (%s)", id, err[0] ? err : "player"); return; }
+        /* the TV app's own player answer for this account carries the history URLs; when YouTube
+         * answers it without them (it may ask the TV player for more checks), the ones from the
+         * normal stream answer are used: the pings count for whoever sends the account token */
+        const char *clients[2][3] = {{"TVHTML5", TV_VERSION, TV_NAME_ID}, {"TVHTML5_SIMPLY_EMBEDDED_PLAYER", "2.0", "85"}};
+        snprintf(w_vid, sizeof(w_vid), "%s", id); new_cpn(); w_last_et = 0; w_play[0] = w_time[0] = 0;
+        for (int c = 0; c < 2 && !w_play[0]; c++) {
+            snprintf(extra, sizeof(extra), "\"videoId\":\"%s\",\"contentCheckOk\":true,\"racyCheckOk\":true,\"playbackContext\":{\"contentPlaybackContext\":{\"html5Preference\":\"HTML5_PREF_WANTS\"}}", id);
+            err[0] = 0;
+            JSON_Value *v = c == 0 ? tv_call("player", extra, err, sizeof(err)) : tv_call_as(clients[c][0], clients[c][1], clients[c][2], "player", extra, err, sizeof(err));
+            JSON_Object *o = json_value_get_object(v);
+            const char *p = json_object_dotget_string(o, "playbackTracking.videostatsPlaybackUrl.baseUrl");
+            const char *t = json_object_dotget_string(o, "playbackTracking.videostatsWatchtimeUrl.baseUrl");
+            if (p) snprintf(w_play, sizeof(w_play), "%s", p);
+            if (t) snprintf(w_time, sizeof(w_time), "%s", t);
+            if (!p) Log_msg("account history %s: %s player has no tracking (%s %s)", id, clients[c][0],
+                            v ? json_object_dotget_string(o, "playabilityStatus.status") ? json_object_dotget_string(o, "playabilityStatus.status") : "?" : "error",
+                            v ? (json_object_dotget_string(o, "playabilityStatus.reason") ? json_object_dotget_string(o, "playabilityStatus.reason") : "") : err);
+            json_value_free(v);
+        }
+        if (!w_play[0] && fb_play[0]) { snprintf(w_play, sizeof(w_play), "%s", fb_play); snprintf(w_time, sizeof(w_time), "%s", fb_time); Log_msg("account history %s: using the stream's tracking URLs", id); }
+        if (!w_play[0]) { Log_msg("account history %s: no tracking URLs at all", id); return; }
         snprintf(extra, sizeof(extra), "&cmt=%.3f&len=%.3f", pos, dur);
         ping(w_play, extra);
         Log_msg("account history: %s marked watched", id);
@@ -692,7 +720,12 @@ static void queue_job(int kind, const char *id, double pos, double dur, bool pau
     pthread_cond_signal(&wwake);
     pthread_mutex_unlock(&wlock);
 }
-void Account_watchStart(const char *id, double pos, double dur) { queue_job(WJ_START, id, pos, dur, false, true); }
+void Account_watchStart(const char *id, double pos, double dur, const char *track_pb, const char *track_wt) {
+    pthread_mutex_lock(&wlock);
+    snprintf(fb_play, sizeof(fb_play), "%s", track_pb ? track_pb : ""); snprintf(fb_time, sizeof(fb_time), "%s", track_wt ? track_wt : "");
+    pthread_mutex_unlock(&wlock);
+    queue_job(WJ_START, id, pos, dur, false, true);
+}
 void Account_watchTime(const char *id, double pos, double dur, bool paused) { queue_job(WJ_TIME, id, pos, dur, paused, true); }
 void Account_like(const char *id, bool on) { queue_job(WJ_LIKE, id, 0, 0, false, on); }
 void Account_subscribe(const char *channel_id, bool on) { queue_job(WJ_SUB, channel_id, 0, 0, false, on); }

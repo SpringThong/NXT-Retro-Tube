@@ -3655,7 +3655,7 @@ static void update(void) {
     if (A.hasCur && Account_signedIn() && S.acc_history && !st.live && st.duration > 0 && !K.enabled) {
         if (strcmp(A.accWatchId, A.cur.id)) { snprintf(A.accWatchId, sizeof(A.accWatchId), "%s", A.cur.id); A.accStarted = false; A.accPingAt = now + 4000; }
         int sst = st.state == PS_PLAYING ? 1 : st.state == PS_PAUSED ? 2 : 0;
-        if (!A.accStarted && st.state == PS_PLAYING && (Sint32)(now - A.accPingAt) >= 0) { Account_watchStart(A.cur.id, st.position, st.duration); A.accStarted = true; A.accPingAt = now + 20000; }
+        if (!A.accStarted && st.state == PS_PLAYING && (Sint32)(now - A.accPingAt) >= 0) { Account_watchStart(A.cur.id, st.position, st.duration, A.streamReady ? A.stream.track_pb : "", A.streamReady ? A.stream.track_wt : ""); A.accStarted = true; A.accPingAt = now + 20000; }
         else if (A.accStarted && sst && ((Sint32)(now - A.accPingAt) >= 0 || sst != A.accLastState)) { Account_watchTime(A.cur.id, st.position, st.duration, sst == 2); A.accPingAt = now + 30000; }
         A.accLastState = sst;
     }

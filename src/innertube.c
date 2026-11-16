@@ -257,6 +257,11 @@ char *Innertube_player(const char *video_id, char *err, size_t en) {
     }
     const char *sbspec = json_object_dotget_string(r, "storyboards.playerStoryboardSpecRenderer.spec");
     if (sbspec) json_object_set_string(o, "storyboard_spec", sbspec);
+    /* watch-history pings (2.4.1): used with the signed-in account when its own TV answer has none */
+    const char *pbu = json_object_dotget_string(r, "playbackTracking.videostatsPlaybackUrl.baseUrl");
+    const char *wtu = json_object_dotget_string(r, "playbackTracking.videostatsWatchtimeUrl.baseUrl");
+    if (pbu) json_object_set_string(o, "track_playback", pbu);
+    if (wtu) json_object_set_string(o, "track_watchtime", wtu);
     bool live = json_object_get_boolean(vd, "isLive") == 1;
     if (live) { json_object_set_boolean(o, "is_live", true); json_object_set_string(o, "live_status", "is_live"); }
     JSON_Value *fv = json_value_init_array(); JSON_Array *fa = json_value_get_array(fv);
