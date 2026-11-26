@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define APP_NAME "NXT Retro Tube"
-#define APP_VERSION "2.7"
+#define APP_VERSION "2.8"
 #define ACC_SEND_HISTORY 1
 /* scanout.c: direct panel output (Smart Pro S, when SDL cannot open the panel) */
 bool Scanout_open(int *lw, int *lh);
@@ -262,7 +262,7 @@ int AudioRoute_setBottom(bool host);
 /* settings.c */
 #define KM_COUNT 10
 typedef struct { int lang, av_offset_ms, audio_out, home_mode, dac_volume; bool autoplay, prefetch, telex, bottom_dac; int keymap[KM_COUNT];
-                 int sub_mode, sub_size; char sub_lang[16]; bool ota_auto, sleep_pause, fps60;
+                 int sub_mode, sub_size; char sub_lang[16]; bool ota_auto, sleep_pause, fps60, vfill;   /* vfill: full screen video zoomed to fill the panel (2.8) */
                  /* 2.3.10 */
                  int theme;                 /* palette preset */
                  char app_title[40];        /* shown top-left instead of "NXT Retro Tube" when set */

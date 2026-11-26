@@ -5,3 +5,4 @@ sdk/
 deps/ffmpeg-*/
 __pycache__/
 ota_private*.pem
+deps/mbed/

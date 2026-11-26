@@ -54,7 +54,8 @@ int D_textBox(FontFace f, int size, const char *s, int x, int y, int w, int line
 int D_fontHeight(FontFace f, int size);
 /* subtitles: F_SUB is Be Vietnam Pro Medium unless a font pack is chosen */
 void D_setSubFont(const char *path, long index);
-void D_videoNative(SDL_Texture *t, int tw, int th);
+void D_videoNative(SDL_Texture *t, int tw, int th, bool fill);   /* the whole panel; fill = zoom to cover it (2.8) */
+void D_videoFill(SDL_Texture *t, int tw, int th, SDL_Rect area, bool fill);
 void D_subtitle(const char *s, int size, int cx, int bottom, int max_w, int max_lines);
 
 void D_icon(const char *name, int x, int y, int size, SDL_Color c);

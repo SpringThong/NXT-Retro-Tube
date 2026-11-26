@@ -614,12 +614,38 @@ void D_video(SDL_Texture *t, int tw, int th, SDL_Rect a) {
 }
 /* Full-screen video on a screen wider than the 4:3 layout (Smart Pro / Smart Pro S, 1280x720):
  * drawn at the panel's own resolution instead of inside the letterboxed 1024x768 canvas. */
-void D_videoNative(SDL_Texture *t, int tw, int th) {
+/* 2.8 "Lấp đầy màn hình" (like pinch-to-zoom in the YouTube phone app): the picture grows until it covers
+ * the area, keeping its shape; what spills over is cut from the edges (only the part shown is copied).
+ *  - 16:9 on a 4:3 panel: full height, the sides trimmed (1/8 each).
+ *  - 4:3 picture that the uploader put in a 16:9 frame with black sides: exactly those sides go.
+ *  - 4:3 or tall video on a 16:9 panel: full width.
+ *  - upright video (Shorts) is zoomed at most 1.4x past "fit", so a face is not cut in half; wide films (21:9)
+ *    cover the screen like the phone app does.
+ * fill = false: the whole picture, black bars where the shapes differ. */
+#define FILL_MAX_ZOOM 1.40
+void D_videoFill(SDL_Texture *t, int tw, int th, SDL_Rect a, bool fill) {
+    D_rect(a.x, a.y, a.w, a.h, C_BLACK);
+    if (!t || tw <= 0 || th <= 0 || a.w <= 0 || a.h <= 0) return;
+    double sx = (double)a.w / tw, sy = (double)a.h / th;
+    double fit = sx < sy ? sx : sy, cover = sx > sy ? sx : sy, s = fit;
+    if (fill) { s = cover; if (th > tw && s > fit * FILL_MAX_ZOOM) s = fit * FILL_MAX_ZOOM; }   /* only upright video is held back */
+    double dw = tw * s, dh = th * s;
+    SDL_Rect src = {0, 0, tw, th}, dst;
+    if (dw > a.w) { src.w = (int)(a.w / s + 0.5); if (src.w > tw) src.w = tw; src.x = (tw - src.w) / 2; dw = a.w; }
+    if (dh > a.h) { src.h = (int)(a.h / s + 0.5); if (src.h > th) src.h = th; src.y = (th - src.h) / 2; dh = a.h; }
+    dst.w = (int)(dw + 0.5); dst.h = (int)(dh + 0.5);
+    dst.x = a.x + (a.w - dst.w) / 2; dst.y = a.y + (a.h - dst.h) / 2;
+    SDL_RenderCopy(R, t, &src, &dst);
+}
+/* Full-screen video: the whole panel. On a screen wider than the 4:3 layout (Smart Pro / Smart Pro S,
+ * 1280x720) it is drawn at the panel's own resolution instead of inside the letterboxed 1024x768 canvas.
+ * (Before 2.8 a 4:3 panel showed it in a 16:9 box, so 4:3 video had black on all four sides.) */
+void D_videoNative(SDL_Texture *t, int tw, int th, bool fill) {
     int lw, lh, ow, oh;
     SDL_RenderGetLogicalSize(R, &lw, &lh);
-    if (SDL_GetRendererOutputSize(R, &ow, &oh) || lw <= 0 || ow * 3 <= oh * 4 + 8) { D_video(t, tw, th, (SDL_Rect){0, 96, 1024, 576}); return; }
+    if (SDL_GetRendererOutputSize(R, &ow, &oh) || lw <= 0 || ow * 3 <= oh * 4 + 8) { D_videoFill(t, tw, th, (SDL_Rect){0, 0, 1024, 768}, fill); return; }
     SDL_RenderSetLogicalSize(R, 0, 0); SDL_RenderSetViewport(R, NULL); SDL_RenderSetScale(R, 1, 1);
-    D_video(t, tw, th, (SDL_Rect){0, 0, ow, oh});
+    D_videoFill(t, tw, th, (SDL_Rect){0, 0, ow, oh}, fill);
     SDL_RenderSetLogicalSize(R, lw, lh);
 }
 void D_thumb(const char *id, SDL_Rect r, SDL_Color bg) {

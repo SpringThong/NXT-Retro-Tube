@@ -1218,10 +1218,15 @@ static void open_panel(Panel p) {
 static int chapter_at(double pos) { int c = -1; for (int i = 0; i < A.stream.nchap; i++) if (A.stream.chap[i].t <= pos + 0.3) c = i; return c; }
 /* Tùy chọn video (SELECT): ids keep their old numbers (0-8), 2.3.10 adds 9-16 */
 enum { OPT_QUALITY, OPT_SPEED, OPT_BG, OPT_LATER, OPT_FOLLOW, OPT_DOWNLOAD, OPT_STATS, OPT_SUBS, OPT_SLEEP,
-       OPT_REPEAT, OPT_AB, OPT_CHAPTERS, OPT_BOOST, OPT_LOCK, OPT_MUSIC, OPT_PLAYLIST, OPT_SKIP, OPT_LIKE, OPT_SCREENOFF, OPT_RADIO };
+       OPT_REPEAT, OPT_AB, OPT_CHAPTERS, OPT_BOOST, OPT_LOCK, OPT_MUSIC, OPT_PLAYLIST, OPT_SKIP, OPT_LIKE, OPT_SCREENOFF, OPT_RADIO, OPT_FILL };
+/* full screen: "Mặc định" (the whole picture) <-> "Lấp đầy màn hình" (zoomed to cover the panel) */
+static void video_fill_toggle(void) {
+    S.vfill = !S.vfill; Settings_save();
+    toast(S.vfill ? "Lấp đầy màn hình" : "Mặc định · đủ khung hình");
+}
 static int opt_list(int *ids) {
     int n = 0;
-    ids[n++] = OPT_QUALITY; ids[n++] = OPT_SPEED; ids[n++] = OPT_SUBS;
+    ids[n++] = OPT_QUALITY; ids[n++] = OPT_SPEED; ids[n++] = OPT_FILL; ids[n++] = OPT_SUBS;
     if (A.stream.nchap && !A.cur.live) ids[n++] = OPT_CHAPTERS;
     ids[n++] = OPT_MUSIC; ids[n++] = OPT_SCREENOFF;
     if (!A.cur.live) ids[n++] = OPT_RADIO;
@@ -1316,6 +1321,7 @@ static void run_opt(int id) {
             Account_likeSet(A.cur.id, on); A.likedDirty = true;
             Account_like(A.cur.id, on); toast(on ? "Đã thích · lưu vào tài khoản Google" : "Đã bỏ thích"); A.panel = PANEL_NONE; return; }
         case OPT_SCREENOFF: A.panel = PANEL_NONE; screen_off(); return;
+        case OPT_FILL: video_fill_toggle(); return;
         case OPT_RADIO: start_radio(false); A.panel = PANEL_NONE; return;
         case OPT_DOWNLOAD:
             if (A.cur.live) { toast("Không tải được video trực tiếp"); A.panel = PANEL_NONE; return; }
@@ -2026,7 +2032,8 @@ static void handle_key(Key k) {
     }
     case SC_FULL: {
         if (k == K_B || k == K_Y) { A.screen = SC_WATCH; return; }
-        if (k == K_UP || k == K_DOWN) { A.osd = true; A.osdUntil = SDL_GetTicks() + 3000; return; }
+        if (k == K_DOWN) { video_fill_toggle(); return; }   /* like pinch-to-zoom on a phone */
+        if (k == K_UP) { A.osd = true; A.osdUntil = SDL_GetTicks() + 3000; return; }
         playback_key(k);
         return;
     }
@@ -2768,7 +2775,8 @@ static const HelpRow HELP_2[] = {
     {"X", "Chất lượng"},
     {"START", "Tốc độ"},
     {"SELECT", "Tùy chọn video"},
-    {"Lên Xuống", "Hiện thanh thông tin"},
+    {"Lên", "Hiện thanh thông tin"},
+    {"Xuống", "Đổi khung hình: Mặc định (đủ hình) / Lấp đầy màn hình (phóng to cho kín màn, cắt bớt mép)"},
     {"B / Y", "Thu nhỏ lại"},
     {NULL, NULL}};
 static const HelpRow HELP_3[] = {
@@ -3142,6 +3150,7 @@ static void draw_panel(void) {
                     snprintf(label, sizeof(label), "%s", on ? T("Bật lại hình") : T("Chế độ nghe nhạc")); snprintf(note, sizeof(note), "%s", on ? T("Quay về chất lượng trước đó") : T("Tắt hình, màn hình nhạc · mát máy, pin lâu")); break; }
                 case OPT_LIKE: { bool on = Account_likeState(A.cur.id) == 1;
                     snprintf(label, sizeof(label), "%s", on ? T("Bỏ thích") : T("Thích video này")); snprintf(note, sizeof(note), "%s", T("Lưu vào tài khoản Google · danh sách Video đã thích")); break; }
+                case OPT_FILL: snprintf(label, sizeof(label), T("Khung hình · %s"), S.vfill ? T("Lấp đầy màn hình") : T("Mặc định")); snprintf(note, sizeof(note), "%s", T("Toàn màn hình: phóng to cho kín màn, cắt bớt mép · Xuống để đổi nhanh")); break;
                 case OPT_SCREENOFF: snprintf(label, sizeof(label), "%s", T("Tắt màn hình, nghe tiếp")); snprintf(note, sizeof(note), "%s", T("Tiếng vẫn chạy, đỡ tốn pin · bấm phím bất kỳ để bật lại")); break;
                 case OPT_RADIO: snprintf(label, sizeof(label), "%s", T("Mix nhạc từ bài này")); snprintf(note, sizeof(note), "%s", T("YouTube Music chọn tiếp các bài hợp gu · phát liên tục")); break;
                 case OPT_PLAYLIST: snprintf(label, sizeof(label), "%s", T("Thêm vào danh sách phát")); snprintf(note, sizeof(note), "%s", T("Yêu thích và danh sách của bạn · Thư viện")); break;
@@ -3262,7 +3271,7 @@ static void draw_full(void) {
     else if (st.audio_only || !t) {
         D_rect(a.x, a.y, a.w, a.h, RGBA(0x12, 0x0F, 0x18, 255));
         D_thumb(A.cur.id, (SDL_Rect){SCREEN_CX - 160, 260, 320, 180}, RGBA(0x12, 0x0F, 0x18, 255));
-    } else D_videoNative(t, w, h);
+    } else D_videoNative(t, w, h, S.vfill);
     Uint32 now = SDL_GetTicks();
     bool osd = A.osd && (now < A.osdUntil || st.state != PS_PLAYING || A.panel);
     if (A.osd && now >= A.osdUntil && st.state == PS_PLAYING && !A.panel) A.osd = false;
@@ -3285,8 +3294,8 @@ static void draw_full(void) {
         if (st.live) snprintf(tm, sizeof(tm), "%s", T("TRỰC TIẾP")); else snprintf(tm, sizeof(tm), "%s / %s", p1, p2);
         D_text(F_PIXEL, 30, tm, 24, 708, C_INK, 0, AL_LEFT);
         int hx = SCREEN_R;
-        const char *hk[4][2] = {{KN(K_B), "Thu nhỏ"}, {KN(K_SELECT), "Tùy chọn"}, {KN(K_START), "Tốc độ"}, {KN(K_X), "Chất lượng"}};
-        for (int i = 0; i < 4; i++) {
+        const char *hk[5][2] = {{KN(K_B), "Thu nhỏ"}, {KN(K_SELECT), "Tùy chọn"}, {KN(K_START), "Tốc độ"}, {KN(K_X), "Chất lượng"}, {"UD", S.vfill ? "Mặc định" : "Lấp đầy"}};
+        for (int i = 0; i < 5; i++) {
             int kw = D_textW(F_PIXEL, 24, hk[i][0]) + (strlen(hk[i][0]) > 1 ? 14 : 0); if (kw < 28) kw = 28;
             int ww = kw + 8 + D_textW(F_MED, 18, hk[i][1]) + 24;
             hx -= ww; D_round(hx, 708, ww - 8, 42, 10, C_SURFACE); D_roundRing(hx, 708, ww - 8, 42, 10, 2, C_LINE);
