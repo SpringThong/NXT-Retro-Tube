@@ -623,29 +623,37 @@ void D_video(SDL_Texture *t, int tw, int th, SDL_Rect a) {
  *    cover the screen like the phone app does.
  * fill = false: the whole picture, black bars where the shapes differ. */
 #define FILL_MAX_ZOOM 1.40
-void D_videoFill(SDL_Texture *t, int tw, int th, SDL_Rect a, bool fill) {
+void D_videoFill(SDL_Texture *t, int tw, int th, SDL_Rect a, const VideoView *vv, SDL_FRect *view) {
     D_rect(a.x, a.y, a.w, a.h, C_BLACK);
+    if (view) *view = (SDL_FRect){0, 0, 1, 1};
     if (!t || tw <= 0 || th <= 0 || a.w <= 0 || a.h <= 0) return;
     double sx = (double)a.w / tw, sy = (double)a.h / th;
     double fit = sx < sy ? sx : sy, cover = sx > sy ? sx : sy, s = fit;
-    if (fill) { s = cover; if (th > tw && s > fit * FILL_MAX_ZOOM) s = fit * FILL_MAX_ZOOM; }   /* only upright video is held back */
-    double dw = tw * s, dh = th * s;
-    SDL_Rect src = {0, 0, tw, th}, dst;
-    if (dw > a.w) { src.w = (int)(a.w / s + 0.5); if (src.w > tw) src.w = tw; src.x = (tw - src.w) / 2; dw = a.w; }
-    if (dh > a.h) { src.h = (int)(a.h / s + 0.5); if (src.h > th) src.h = th; src.y = (th - src.h) / 2; dh = a.h; }
+    if (vv && vv->fill) { s = cover; if (th > tw && s > fit * FILL_MAX_ZOOM) s = fit * FILL_MAX_ZOOM; }   /* only upright video is held back */
+    if (vv && vv->zoom > 1) s *= vv->zoom;
+    double dw = tw * s, dh = th * s, cw = tw, ch = th;   /* cw x ch: the part of the picture shown */
+    if (dw > a.w) { cw = a.w / s; dw = a.w; }
+    if (dh > a.h) { ch = a.h / s; dh = a.h; }
+    /* where that part sits: the middle, moved by the pan (only as far as the picture goes) */
+    double px = vv ? vv->px : 0, py = vv ? vv->py : 0;
+    double cx = (tw - cw) / 2 * (1 + px), cy = (th - ch) / 2 * (1 + py);
+    SDL_Rect src = {(int)(cx + 0.5), (int)(cy + 0.5), (int)(cw + 0.5), (int)(ch + 0.5)}, dst;
+    if (src.w > tw) src.w = tw; if (src.h > th) src.h = th;
+    if (src.x + src.w > tw) src.x = tw - src.w; if (src.y + src.h > th) src.y = th - src.h;
     dst.w = (int)(dw + 0.5); dst.h = (int)(dh + 0.5);
     dst.x = a.x + (a.w - dst.w) / 2; dst.y = a.y + (a.h - dst.h) / 2;
     SDL_RenderCopy(R, t, &src, &dst);
+    if (view) *view = (SDL_FRect){(float)src.x / tw, (float)src.y / th, (float)src.w / tw, (float)src.h / th};
 }
 /* Full-screen video: the whole panel. On a screen wider than the 4:3 layout (Smart Pro / Smart Pro S,
  * 1280x720) it is drawn at the panel's own resolution instead of inside the letterboxed 1024x768 canvas.
  * (Before 2.8 a 4:3 panel showed it in a 16:9 box, so 4:3 video had black on all four sides.) */
-void D_videoNative(SDL_Texture *t, int tw, int th, bool fill) {
+void D_videoNative(SDL_Texture *t, int tw, int th, const VideoView *vv, SDL_FRect *view) {
     int lw, lh, ow, oh;
     SDL_RenderGetLogicalSize(R, &lw, &lh);
-    if (SDL_GetRendererOutputSize(R, &ow, &oh) || lw <= 0 || ow * 3 <= oh * 4 + 8) { D_videoFill(t, tw, th, (SDL_Rect){0, 0, 1024, 768}, fill); return; }
+    if (SDL_GetRendererOutputSize(R, &ow, &oh) || lw <= 0 || ow * 3 <= oh * 4 + 8) { D_videoFill(t, tw, th, (SDL_Rect){0, 0, 1024, 768}, vv, view); return; }
     SDL_RenderSetLogicalSize(R, 0, 0); SDL_RenderSetViewport(R, NULL); SDL_RenderSetScale(R, 1, 1);
-    D_videoFill(t, tw, th, (SDL_Rect){0, 0, ow, oh}, fill);
+    D_videoFill(t, tw, th, (SDL_Rect){0, 0, ow, oh}, vv, view);
     SDL_RenderSetLogicalSize(R, lw, lh);
 }
 void D_thumb(const char *id, SDL_Rect r, SDL_Color bg) {

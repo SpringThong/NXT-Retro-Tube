@@ -164,6 +164,7 @@ static struct {
     char lastQuery[300], channelId[48];
     /* 2.7 channel page: 0 = its videos, 1 = its playlists, 2 = inside one playlist */
     int stripSel; float stripScroll;
+    SDL_FRect zoomView; bool zoomMode; int zoomIx; float panX, panY; Uint32 zoomShownAt;   /* full screen zoom (2.8) */
     Screen backScreen;   /* the browsing screen last shown before the watch page */
     bool plOrdered, plReversed;
     int chanMode, chanPlSel; bool plSaveWhenLoaded, chanFromHome; char chanTitle[160], plId[64], plTitle[200];
@@ -230,6 +231,8 @@ static void fmt_minutes(int secs, char *out, size_t n);
 static bool parent_mode(void) { return (A.screen == SC_SETTINGS || A.screen == SC_KIDS) && A.settingsUnlocked; }
 
 static void chan_savePlaylist(void);
+static void zoom_reset(void);
+static void playback_key(Key k);
 static void chan_playlistLoaded(void);
 static void more_results(void);
 static void toast(const char *fmt, ...) {
@@ -423,7 +426,7 @@ static double resume_at(const VideoItem *v) {
 static void open_video(const VideoItem *v, const VideoList *from, int index) {
     if (!Kids_allowed(v)) { toast("Chế độ trẻ em: video này không được xem"); return; }
     if (K.enabled && Kids_lockReason()) { A.kidsLock = Kids_lockReason(); return; }
-    A.seekPending = false;
+    A.seekPending = false; zoom_reset();
     save_history();
     Player_close(); Subs_close(); A.subOverride = 0;
     StreamInfo_free(&A.stream); A.streamReady = false;
@@ -1218,15 +1221,32 @@ static void open_panel(Panel p) {
 static int chapter_at(double pos) { int c = -1; for (int i = 0; i < A.stream.nchap; i++) if (A.stream.chap[i].t <= pos + 0.3) c = i; return c; }
 /* Tùy chọn video (SELECT): ids keep their old numbers (0-8), 2.3.10 adds 9-16 */
 enum { OPT_QUALITY, OPT_SPEED, OPT_BG, OPT_LATER, OPT_FOLLOW, OPT_DOWNLOAD, OPT_STATS, OPT_SUBS, OPT_SLEEP,
-       OPT_REPEAT, OPT_AB, OPT_CHAPTERS, OPT_BOOST, OPT_LOCK, OPT_MUSIC, OPT_PLAYLIST, OPT_SKIP, OPT_LIKE, OPT_SCREENOFF, OPT_RADIO, OPT_FILL };
+       OPT_REPEAT, OPT_AB, OPT_CHAPTERS, OPT_BOOST, OPT_LOCK, OPT_MUSIC, OPT_PLAYLIST, OPT_SKIP, OPT_LIKE, OPT_SCREENOFF, OPT_RADIO, OPT_FILL, OPT_ZOOM };
 /* full screen: "Mặc định" (the whole picture) <-> "Lấp đầy màn hình" (zoomed to cover the panel) */
 static void video_fill_toggle(void) {
-    S.vfill = !S.vfill; Settings_save();
+    S.vfill = !S.vfill; Settings_save(); A.panX = A.panY = 0;
     toast(S.vfill ? "Lấp đầy màn hình" : "Mặc định · đủ khung hình");
+}
+/* 2.8 Zoom (full screen, like pinch-to-zoom on a phone): R1 / L1 zoom in / out by steps, the D-pad moves
+ * the view to the part worth looking at, X puts it back, B is done. Kept for the video, reset by the next. */
+static const float ZOOM_STEP[] = {1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f};
+#define ZOOM_N 6
+static void zoom_reset(void) { A.zoomIx = 0; A.panX = A.panY = 0; A.zoomMode = false; }
+static void zoom_key(Key k) {
+    if (k == K_R1 && A.zoomIx < ZOOM_N - 1) A.zoomIx++;
+    else if (k == K_L1 && A.zoomIx > 0) { A.zoomIx--; if (!A.zoomIx && !S.vfill) A.panX = A.panY = 0; }
+    else if (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN) {
+        float *p = k == K_LEFT || k == K_RIGHT ? &A.panX : &A.panY, d = (k == K_LEFT || k == K_UP) ? -0.2f : 0.2f;
+        *p += d; if (*p < -1) *p = -1; if (*p > 1) *p = 1;
+    }
+    else if (k == K_X) { A.zoomIx = 0; A.panX = A.panY = 0; }
+    else if (k == K_B) { A.zoomMode = false; return; }
+    else if (k == K_A || k == K_START || k == K_SELECT || k == K_L2 || k == K_R2) { playback_key(k); return; }
+    A.zoomShownAt = SDL_GetTicks();
 }
 static int opt_list(int *ids) {
     int n = 0;
-    ids[n++] = OPT_QUALITY; ids[n++] = OPT_SPEED; ids[n++] = OPT_FILL; ids[n++] = OPT_SUBS;
+    ids[n++] = OPT_QUALITY; ids[n++] = OPT_SPEED; ids[n++] = OPT_FILL; ids[n++] = OPT_ZOOM; ids[n++] = OPT_SUBS;
     if (A.stream.nchap && !A.cur.live) ids[n++] = OPT_CHAPTERS;
     ids[n++] = OPT_MUSIC; ids[n++] = OPT_SCREENOFF;
     if (!A.cur.live) ids[n++] = OPT_RADIO;
@@ -1322,6 +1342,7 @@ static void run_opt(int id) {
             Account_like(A.cur.id, on); toast(on ? "Đã thích · lưu vào tài khoản Google" : "Đã bỏ thích"); A.panel = PANEL_NONE; return; }
         case OPT_SCREENOFF: A.panel = PANEL_NONE; screen_off(); return;
         case OPT_FILL: video_fill_toggle(); return;
+        case OPT_ZOOM: A.panel = PANEL_NONE; A.screen = SC_FULL; A.zoomMode = true; A.zoomShownAt = SDL_GetTicks(); return;
         case OPT_RADIO: start_radio(false); A.panel = PANEL_NONE; return;
         case OPT_DOWNLOAD:
             if (A.cur.live) { toast("Không tải được video trực tiếp"); A.panel = PANEL_NONE; return; }
@@ -2031,8 +2052,9 @@ static void handle_key(Key k) {
         return;
     }
     case SC_FULL: {
+        if (A.zoomMode) { zoom_key(k); return; }
         if (k == K_B || k == K_Y) { A.screen = SC_WATCH; return; }
-        if (k == K_DOWN) { video_fill_toggle(); return; }   /* like pinch-to-zoom on a phone */
+        if (k == K_DOWN) { A.zoomMode = true; A.zoomShownAt = SDL_GetTicks(); return; }   /* like pinch-to-zoom on a phone */
         if (k == K_UP) { A.osd = true; A.osdUntil = SDL_GetTicks() + 3000; return; }
         playback_key(k);
         return;
@@ -2776,7 +2798,8 @@ static const HelpRow HELP_2[] = {
     {"START", "Tốc độ"},
     {"SELECT", "Tùy chọn video"},
     {"Lên", "Hiện thanh thông tin"},
-    {"Xuống", "Đổi khung hình: Mặc định (đủ hình) / Lấp đầy màn hình (phóng to cho kín màn, cắt bớt mép)"},
+    {"Xuống", "Zoom: R1 phóng to · L1 thu nhỏ · D-pad chọn chỗ xem · X đặt lại · B xong"},
+    {"SELECT", "Tùy chọn › Khung hình: Mặc định (đủ hình) / Lấp đầy màn hình (kín màn, cắt bớt mép)"},
     {"B / Y", "Thu nhỏ lại"},
     {NULL, NULL}};
 static const HelpRow HELP_3[] = {
@@ -3150,7 +3173,8 @@ static void draw_panel(void) {
                     snprintf(label, sizeof(label), "%s", on ? T("Bật lại hình") : T("Chế độ nghe nhạc")); snprintf(note, sizeof(note), "%s", on ? T("Quay về chất lượng trước đó") : T("Tắt hình, màn hình nhạc · mát máy, pin lâu")); break; }
                 case OPT_LIKE: { bool on = Account_likeState(A.cur.id) == 1;
                     snprintf(label, sizeof(label), "%s", on ? T("Bỏ thích") : T("Thích video này")); snprintf(note, sizeof(note), "%s", T("Lưu vào tài khoản Google · danh sách Video đã thích")); break; }
-                case OPT_FILL: snprintf(label, sizeof(label), T("Khung hình · %s"), S.vfill ? T("Lấp đầy màn hình") : T("Mặc định")); snprintf(note, sizeof(note), "%s", T("Toàn màn hình: phóng to cho kín màn, cắt bớt mép · Xuống để đổi nhanh")); break;
+                case OPT_FILL: snprintf(label, sizeof(label), T("Khung hình · %s"), S.vfill ? T("Lấp đầy màn hình") : T("Mặc định")); snprintf(note, sizeof(note), "%s", T("Toàn màn hình: Mặc định đủ hình · Lấp đầy phóng to cho kín màn, cắt bớt mép")); break;
+                case OPT_ZOOM: snprintf(label, sizeof(label), "%s", T("Zoom và di chuyển hình")); snprintf(note, sizeof(note), "%s", T("R1 phóng to · L1 thu nhỏ · D-pad chọn chỗ xem · trong toàn màn hình bấm Xuống")); break;
                 case OPT_SCREENOFF: snprintf(label, sizeof(label), "%s", T("Tắt màn hình, nghe tiếp")); snprintf(note, sizeof(note), "%s", T("Tiếng vẫn chạy, đỡ tốn pin · bấm phím bất kỳ để bật lại")); break;
                 case OPT_RADIO: snprintf(label, sizeof(label), "%s", T("Mix nhạc từ bài này")); snprintf(note, sizeof(note), "%s", T("YouTube Music chọn tiếp các bài hợp gu · phát liên tục")); break;
                 case OPT_PLAYLIST: snprintf(label, sizeof(label), "%s", T("Thêm vào danh sách phát")); snprintf(note, sizeof(note), "%s", T("Yêu thích và danh sách của bạn · Thư viện")); break;
@@ -3260,6 +3284,29 @@ static void draw_watch(void) {
     else { hx += D_hint(hx, 728, KN(K_A), "Phát/dừng") + 16; hx += D_hint(hx, 728, "LR", "Tua 10 giây") + 16; hx += D_hint(hx, 728, KN(K_Y), "Toàn màn hình") + 16; hx += D_hint(hx, 728, KN(K_X), "Chất lượng") + 16; hx += D_hint(hx, 728, KN(K_SELECT), "Tùy chọn") + 16; D_hint(hx, 728, KN(K_B), "Về"); }
     draw_panel();
 }
+/* zoom mode: a small map of the whole picture with the part on screen, the zoom, and the keys */
+static void draw_zoom(void) {
+    bool keys = A.zoomMode;
+    if (!keys && SDL_GetTicks() - A.zoomShownAt > 1500) return;
+    SDL_Texture *t; int w, h; Player_present(A.ren, &t, &w, &h);
+    int mw = 176, mh = w > 0 && h > 0 ? mw * h / w : 99; if (mh > 176) { mh = 176; mw = 176 * w / (h ? h : 1); }
+    int mx = SCREEN_R - mw, my = 24;
+    D_round(mx - 10, my - 10, mw + 20, mh + 52, 12, RGBA(8, 7, 12, 190));
+    if (t) SDL_RenderCopy(A.ren, t, NULL, &(SDL_Rect){mx, my, mw, mh}); else D_rect(mx, my, mw, mh, C_SURFACE);
+    D_rect(mx, my, mw, mh, RGBA(0, 0, 0, 110));
+    SDL_FRect v = A.zoomView;
+    int vx = mx + (int)(v.x * mw), vy = my + (int)(v.y * mh), vw = (int)(v.w * mw + 0.5f), vh = (int)(v.h * mh + 0.5f);
+    if (t) SDL_RenderCopy(A.ren, t, &(SDL_Rect){(int)(v.x * w), (int)(v.y * h), (int)(v.w * w), (int)(v.h * h)}, &(SDL_Rect){vx, vy, vw, vh});
+    D_roundRing(vx - 1, vy - 1, vw + 2, vh + 2, 3, 2, C_MUSTARD);
+    char z[32]; snprintf(z, sizeof(z), "Zoom ×%.2g", ZOOM_STEP[A.zoomIx]);
+    for (char *c = z; *c; c++) if (*c == '.') *c = ',';
+    D_text(F_BOLD, 18, z, mx + mw / 2, my + mh + 8, C_INK, 0, AL_CENTER);
+    if (!keys) return;
+    D_rect(0, 712, SCREEN_W, 56, RGBA(8, 7, 12, 210));
+    char lr[16]; snprintf(lr, sizeof(lr), "%s", KN(K_R1));
+    int x = 24; x += D_hint(x, 724, lr, "Phóng to") + 18; x += D_hint(x, 724, KN(K_L1), "Thu nhỏ hình") + 18;
+    x += D_hint(x, 724, "UD", "Di chuyển hình") + 18; x += D_hint(x, 724, KN(K_X), "Đặt lại") + 18; D_hint(x, 724, KN(K_B), "Xong");
+}
 static void draw_full(void) {
     D_rect(0, 0, SCREEN_W, SCREEN_H, C_BLACK);
     PlayerStatus st; ui_status(&st);
@@ -3271,9 +3318,9 @@ static void draw_full(void) {
     else if (st.audio_only || !t) {
         D_rect(a.x, a.y, a.w, a.h, RGBA(0x12, 0x0F, 0x18, 255));
         D_thumb(A.cur.id, (SDL_Rect){SCREEN_CX - 160, 260, 320, 180}, RGBA(0x12, 0x0F, 0x18, 255));
-    } else D_videoNative(t, w, h, S.vfill);
+    } else { VideoView vv = {S.vfill, ZOOM_STEP[A.zoomIx], A.panX, A.panY}; D_videoNative(t, w, h, &vv, &A.zoomView); }
     Uint32 now = SDL_GetTicks();
-    bool osd = A.osd && (now < A.osdUntil || st.state != PS_PLAYING || A.panel);
+    bool osd = A.osd && (now < A.osdUntil || st.state != PS_PLAYING || A.panel) && !A.zoomMode;
     if (A.osd && now >= A.osdUntil && st.state == PS_PLAYING && !A.panel) A.osd = false;
     draw_player_overlays(a, &st, true);
     draw_subs(&st, SCREEN_CX, osd ? 668 : 656, SCREEN_W - 124, true);
@@ -3294,7 +3341,7 @@ static void draw_full(void) {
         if (st.live) snprintf(tm, sizeof(tm), "%s", T("TRỰC TIẾP")); else snprintf(tm, sizeof(tm), "%s / %s", p1, p2);
         D_text(F_PIXEL, 30, tm, 24, 708, C_INK, 0, AL_LEFT);
         int hx = SCREEN_R;
-        const char *hk[5][2] = {{KN(K_B), "Thu nhỏ"}, {KN(K_SELECT), "Tùy chọn"}, {KN(K_START), "Tốc độ"}, {KN(K_X), "Chất lượng"}, {"UD", S.vfill ? "Mặc định" : "Lấp đầy"}};
+        const char *hk[5][2] = {{KN(K_B), "Thu nhỏ"}, {KN(K_SELECT), "Tùy chọn"}, {KN(K_START), "Tốc độ"}, {KN(K_X), "Chất lượng"}, {"UD", "Zoom"}};
         for (int i = 0; i < 5; i++) {
             int kw = D_textW(F_PIXEL, 24, hk[i][0]) + (strlen(hk[i][0]) > 1 ? 14 : 0); if (kw < 28) kw = 28;
             int ww = kw + 8 + D_textW(F_MED, 18, hk[i][1]) + 24;
@@ -3303,6 +3350,7 @@ static void draw_full(void) {
         }
     }
     if (A.stats) draw_stats(24, 112, &st);
+    draw_zoom();
     draw_panel();
 }
 static void draw_volume(void) {
