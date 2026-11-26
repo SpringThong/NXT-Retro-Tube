@@ -15,8 +15,6 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm t
 - **Zoom như trên điện thoại**: trong toàn màn hình bấm **Xuống**, rồi **R1** phóng to / **L1** thu nhỏ (×1 đến ×3),
   **D-pad** di chuyển để chọn chỗ xem, **X** đặt lại, **B** xong. Góc màn có bản đồ nhỏ cho biết đang xem phần nào.
 - Video **4:3** không còn viền đen bốn phía khi xem toàn màn hình; video 4:3 bị chèn sọc đen sẵn thì chọn Lấp đầy là hết sọc.
-- **Lưu ý cập nhật:** bản 2.8 đổi khoá ký cập nhật. Máy đang chạy 2.7 hoặc cũ hơn **cài tay 2.8 một lần** (chép đè như cài mới,
-  dữ liệu vẫn giữ); từ 2.8 trở đi cập nhật OTA lại tự chạy.
 
 ## Mới ở 2.7
 - **Danh sách phát của kênh**: trong trang kênh bấm **L1/R1** để đổi giữa **Video** và **Danh sách phát** (gom theo bộ).
@@ -55,7 +53,7 @@ Bản 2.5 đưa toàn bộ tính năng của bản thử 2.4.1 lên cả 7 bản
 - **Bộ chỉnh âm (EQ)**: Cài đặt → Âm thanh: Trầm mạnh, Giọng hát, Loa nhỏ của máy, Tai nghe, Rock / EDM.
 - **Tắt màn hình, nghe tiếp** ngay trong SELECT (vẫn dùng được nút nguồn / bảng nhanh như trước).
 
-**Cập nhật**: bản 2.8 cần cài tay một lần (đổi khoá ký); từ 2.8 trở đi máy tự nhận bản mới qua OTA (Cài đặt → Cập nhật & giới thiệu → Cập nhật).
+**Cập nhật**: máy đang chạy bản 2.1 trở lên tự nhận bản 2.8 qua OTA (Cài đặt → Cập nhật & giới thiệu → Cập nhật).
 
 ## Mới ở 2.4
 **Tài khoản Google & xem tiếp**

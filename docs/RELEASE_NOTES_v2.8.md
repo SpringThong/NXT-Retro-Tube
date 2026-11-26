@@ -6,8 +6,7 @@ Chạy trên 7 bản: **NX Redux · NextUI · Stock (Brick / Brick Pro) · Stock
 Bản lớn gộp toàn bộ thay đổi của **2.4**, bản thử **2.4.1**, **2.5**, **2.6**, **2.7** và **2.8**.
 Vẫn giữ tốc độ mở video, tua và phát nhanh như trước, ít giật và mát máy.
 
-> ⚠️ **Lần này cần cài tay:** bản 2.8 đổi khoá ký cập nhật, nên máy đang chạy 2.7 hoặc cũ hơn **không nhận 2.8 qua OTA**.
-> Tải gói đúng máy ở bảng "Tải về", chép đè như cài mới (dữ liệu, đăng nhập, danh sách vẫn giữ). Từ 2.8 trở đi OTA lại tự chạy.
+Máy đang chạy bản 2.1 trở lên tự nhận bản 2.8 qua **OTA** (Cài đặt → Cập nhật & giới thiệu → Cập nhật).
 
 ---
 
@@ -19,9 +18,6 @@ Vẫn giữ tốc độ mở video, tua và phát nhanh như trước, ít giậ
   **D-pad** di chuyển để chọn chỗ xem, **X** đặt lại, **B** xong. Bản đồ nhỏ ở góc cho biết đang xem phần nào. Sang video khác thì tự về ×1.
 - Video **4:3** không còn viền đen bốn phía khi xem toàn màn hình. Video 4:3 mà người đăng chèn sẵn sọc đen hai bên: chọn **Lấp đầy** là hết sọc.
 - Phù hợp từng máy: màn 4:3 (Brick, Brick Pro, R36S) và màn 16:9 (Smart Pro S); video dọc (Shorts) chỉ phóng to vừa phải để không cắt mất mặt người.
-
-**🔑 Khoá ký cập nhật mới**
-- Bản 2.8 đổi khoá ký OTA. Máy đang chạy 2.7 hoặc cũ hơn cần **cài tay 2.8 một lần**; từ 2.8 trở đi OTA lại tự chạy như cũ.
 
 ## Mới ở 2.7
 
@@ -138,7 +134,7 @@ Giải nén gói đúng máy rồi chép vào thẻ nhớ (chép đè nếu đã
 | Knulli | thư mục `roms` → phân vùng dữ liệu (có sẵn `roms/`) | Ports (cập nhật danh sách game trước) |
 | dArkOS R36S | thư mục `ports` → thẻ game (EASYROMS) | Ports (Start → Game settings → Update gamelists) |
 
-Cần Wi-Fi. **Bản 2.8 phải chép tay một lần** (đổi khoá ký). Từ 2.8 trở đi không cần chép tay: vào **Cài đặt → Cập nhật & giới thiệu → Cập nhật**,
+Cần Wi-Fi. Máy đã có bản 2.1 trở lên thì không cần chép tay: vào **Cài đặt → Cập nhật & giới thiệu → Cập nhật**,
 bấm **A** để kiểm tra, **A hai lần** để tải và cài, rồi **A** để mở lại app.
 
 ## Cách sử dụng
