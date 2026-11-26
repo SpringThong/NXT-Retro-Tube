@@ -1,11 +1,17 @@
-# NXT Retro Tube 2.7 — NextUI (TrimUI Brick / Brick Pro)
+# NXT Retro Tube 2.8 — NX Redux (TrimUI Brick Pro)
 
 ## Cài đặt
-Chép thư mục `Tools/tg5040/NXT Retro Tube.pak` vào `Tools/tg5040/` trên thẻ nhớ. Mở từ Tools.
-
-Trên NextUI, launcher không có icon riêng cho Tools nên app hiện theo tên (không thay launcher).
+Chép thư mục `Tools/NXT Retro Tube.pak` vào `Tools/` trên thẻ nhớ (chép đè nếu đã có bản cũ). Mở từ Tools.
 
 Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm ở `.userdata/shared/nxt-retro-tube`.
+
+## Mới ở 2.8
+- **Khung hình** (SELECT → Khung hình): **Mặc định** (đủ hình) hoặc **Lấp đầy màn hình** (phóng to cho kín màn, cắt bớt mép). Máy nhớ lựa chọn.
+- **Zoom như trên điện thoại**: trong toàn màn hình bấm **Xuống**, rồi **R1** phóng to / **L1** thu nhỏ (×1 đến ×3),
+  **D-pad** di chuyển để chọn chỗ xem, **X** đặt lại, **B** xong. Góc màn có bản đồ nhỏ cho biết đang xem phần nào.
+- Video **4:3** không còn viền đen bốn phía khi xem toàn màn hình; video 4:3 bị chèn sọc đen sẵn thì chọn Lấp đầy là hết sọc.
+- **Lưu ý cập nhật:** bản 2.8 đổi khoá ký cập nhật. Máy đang chạy 2.7 hoặc cũ hơn **cài tay 2.8 một lần** (chép đè như cài mới,
+  dữ liệu vẫn giữ); từ 2.8 trở đi cập nhật OTA lại tự chạy.
 
 ## Mới ở 2.7
 - **Danh sách phát của kênh**: trong trang kênh bấm **L1/R1** để đổi giữa **Video** và **Danh sách phát** (gom theo bộ).
@@ -17,6 +23,8 @@ Cần Wi-Fi. Dữ liệu (lịch sử, xem sau, kênh, video đã tải) nằm �
 - **Chọn nút cạnh trình phát**: đang xem (chưa toàn màn hình) bấm **Lên** để sang Theo dõi · Xem sau · Tải về · Chất lượng · Tốc độ, **A** để bấm.
 - **Hướng dẫn phím** ngay trong máy: Cài đặt → Hướng dẫn phím (8 phần, kể cả các thao tác bấm 2 lần, 3 lần).
 - Thư viện chứa được **30 danh sách phát** (trước là 7); đứng ở một danh sách bấm **START hai lần** để xóa.
+- **Icon đồng bộ cho bộ app NXT**: menu Tools hiện bộ icon màu cho Music, Tube, Movie, BookNest, BrickTok và NXT File
+  (dùng engine của NXT Icon Repair; máy đã cài NXT Icon Repair thì công cụ đó giữ quyền chọn kiểu icon).
 
 ## Mới ở 2.6
 - **Đăng ký kênh đồng bộ hai chiều** như nút Thích: kênh đăng ký trên điện thoại / máy tính hiện "đã đăng ký" trên máy và có trong tab Kênh;
@@ -44,7 +52,7 @@ Bản 2.5 đưa toàn bộ tính năng của bản thử 2.4.1 lên cả 7 bản
 - **Bộ chỉnh âm (EQ)**: Cài đặt → Âm thanh: Trầm mạnh, Giọng hát, Loa nhỏ của máy, Tai nghe, Rock / EDM.
 - **Tắt màn hình, nghe tiếp** ngay trong SELECT (vẫn dùng được nút nguồn / bảng nhanh như trước).
 
-**Cập nhật**: máy đang chạy bản 2.1 trở lên tự nhận bản 2.7 qua OTA (Cài đặt → Cập nhật & giới thiệu → Cập nhật).
+**Cập nhật**: bản 2.8 cần cài tay một lần (đổi khoá ký); từ 2.8 trở đi máy tự nhận bản mới qua OTA (Cài đặt → Cập nhật & giới thiệu → Cập nhật).
 
 ## Mới ở 2.4
 **Tài khoản Google & xem tiếp**
@@ -100,6 +108,10 @@ A mở mục, B quay lại, L1/R1 sang mục bên cạnh.
   có mũi tên mờ ở mép cho biết còn tab phía trước / sau. Chế độ trẻ em có thêm tab "Vận động cho bé".
 - **Nút Home bên hông (NX Redux): sửa lỗi bấm 1 lần mà nhận 2 lần** (bảng OSD hiện rồi tắt ngay). App nhận ra trình phím của NX Redux
   (keymon.elf) tự mở bảng nên không gửi thêm yêu cầu mở nữa; một lần bấm chỉ tính một lần (cần thả nút và cách lần trước ít nhất 0,7 giây).
+- **Icon NXT Retro Tube trong menu Tools (NX Redux) cho mọi phiên bản NX Redux, cũ lẫn mới:** trước đây app chỉ có sẵn launcher sửa cho
+  NX Redux 2.1.2 và 2.4.1, nên lên bản hệ điều hành mới là mất icon. Giờ app **tự sửa chính launcher đang có trên máy** (thêm 2 dòng icon
+  NXT Retro Tube + NXT Retro Music vào bảng icon của nó), dù là phiên bản nào. Mỗi lần mở app sẽ tự kiểm tra: cập nhật NX Redux xong chỉ cần
+  mở NXT Retro Tube một lần rồi thoát ra là icon trở lại. Launcher gốc được sao lưu; Cài đặt → **Icon trong menu Tools** → A hai lần để gỡ (trả lại launcher gốc).
 
 ## Mới ở 2.1.3
 - Chỉ thay đổi cho Smart Pro S (máy khác giữ nguyên như 2.1.2).
@@ -159,6 +171,18 @@ A mở mục, B quay lại, L1/R1 sang mục bên cạnh.
 | Xem video | A phát/dừng · Trái/Phải tua 10 giây · L2/R2 tua 60 giây · L1/R1 video trước/sau · X chất lượng · START tốc độ · SELECT tùy chọn · Y toàn màn hình · Xuống: hàng Tiếp theo · B về |
 | Hàng Tiếp theo | Trái/Phải chọn (không tua) · L2/R2 nhảy 4 video · A xem · Lên quay lại |
 | Tìm kiếm | A gõ (phím #+= mở ký hiệu, abc về chữ) · B xóa chữ / về · Y dấu cách · X xóa hết · SELECT Telex · START tìm · L1/R1 lượt tìm gần đây · L2/R2 đổi mục chính |
+
+## Icon trong menu Tools
+Launcher NX Redux gán icon cho Tools bằng danh sách cố định trong mã, nên app kèm launcher dựng lại từ đúng mã nguồn NX Redux,
+chỉ thêm hai dòng: "NXT Retro Tube" và "NXT Retro Music" (icon của cả hai app):
+- **NX Redux 2.4.1** (bản mới, kho `nx-redux/nx-handheld`, tag v2.4.1): nhận diện qua `.system/version.txt` = v2.4.1.
+- NX Redux 2.1.2 (bản cũ): nhận diện bằng mã SHA-256 của launcher gốc / launcher NXT Retro Music.
+
+App chỉ thay launcher khi đúng một trong hai phiên bản trên, sao lưu launcher cũ vào `integration/backup/`, và cài luôn
+`menu_icon_nxt_tube.png` (cùng `menu_icon_nxt.png` của NXT Retro Music nếu máy chưa có).
+Gỡ: Cài đặt → "Icon trong menu Tools" → bấm A hai lần. Sau lần mở app đầu tiên, khởi động lại máy để thấy icon.
+Khi NX Redux cập nhật lên bản mới hơn 2.4.1, launcher mới của NX Redux sẽ thay launcher này (icon mất, app vẫn chạy bình thường)
+cho tới khi có bản NXT Retro Tube hỗ trợ phiên bản đó.
 
 ## Chế độ trẻ em (phụ huynh quản lý)
 Vào **Cài đặt → Chế độ trẻ em**. Lần đầu bật sẽ yêu cầu đặt **mã PIN phụ huynh 4 số** (nhập 2 lần).

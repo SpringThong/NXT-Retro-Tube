@@ -39,10 +39,11 @@
 #include <mbedtls/md.h>
 #include <psa/crypto.h>
 
+/* 2.8: new signing key (the one used up to 2.7 was lost); devices on 2.7 or older install 2.8 by hand once */
 static const char OTA_PUBKEY[] =
     "-----BEGIN PUBLIC KEY-----\n"
-    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE6HWYrPaK1dXVnVcjJSWNVF0tzttp\n"
-    "ILx5BDdNR2t4a6wW1EiYPPTPxEVDotAzfRemqKvjITMGdB1YkAoL7k7JMg==\n"
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAErEaHd1f09yIDahQgj8mZqF596gPY\n"
+    "7EZdiOymhXY9j/e9w4vyWXPiSYy56iwBZU4E/JSc3RluSc/0Es/Gimn0tg==\n"
     "-----END PUBLIC KEY-----\n";
 #define OTA_REPO_DEFAULT "SpringThong/NXT-Retro-Tube"
 
